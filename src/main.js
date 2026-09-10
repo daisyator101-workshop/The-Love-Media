@@ -352,7 +352,10 @@ function renderLoginPage() {
 
         <div class="form-group">
           <label for="password">Password</label>
-          <input id="password" type="password" placeholder="••••••••" />
+          <div class="password-input-wrap">
+            <input id="password" type="password" placeholder="••••••••" />
+            <button class="password-visibility-btn" id="toggle-login-password-btn" type="button" aria-label="Show password">Show</button>
+          </div>
         </div>
 
         <label class="remember-login" for="remember-login-input">
@@ -390,6 +393,12 @@ function renderLoginPage() {
     if (!rememberLoginInput.checked) localStorage.removeItem('the-love-media-remembered-login');
   });
   restoreBrowserCredential(codenameInput, passwordInput, rememberPasswordInput);
+  document.getElementById('toggle-login-password-btn').addEventListener('click', () => {
+    const isPassword = passwordInput.type === 'password';
+    passwordInput.type = isPassword ? 'text' : 'password';
+    document.getElementById('toggle-login-password-btn').textContent = isPassword ? 'Hide' : 'Show';
+    document.getElementById('toggle-login-password-btn').setAttribute('aria-label', `${isPassword ? 'Hide' : 'Show'} password`);
+  });
 
   document.getElementById('login-btn').addEventListener('click', async () => {
     const codename = codenameInput.value.trim();
@@ -506,7 +515,7 @@ function renderForgotPasswordPage() {
 
   document.getElementById('reset-btn').addEventListener('click', async () => {
     const codename = document.getElementById('reset-codename').value.trim();
-    const resetKey = document.getElementById('reset-key-input').value;
+    const resetKey = document.getElementById('reset-key-input').value.trim();
     const newPassword = document.getElementById('new-password-input').value;
     const status = document.getElementById('reset-status');
     if (!codename || !resetKey || !newPassword) {
