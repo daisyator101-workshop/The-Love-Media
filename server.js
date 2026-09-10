@@ -92,6 +92,7 @@ function enforceAuthRateLimit(request) {
   }
   recentAttempts.push(now);
   authRateLimits.set(key, recentAttempts);
+  return authRateLimitMaxAttempts - recentAttempts.length;
 }
 
 function createSession(account) {
@@ -254,8 +255,9 @@ const httpServer = createServer(async (request, response) => {
   }
 
   try {
+    let attemptsRemaining = null;
     if (['/api/accounts', '/api/login', '/api/reset-password'].includes(request.url)) {
-      enforceAuthRateLimit(request);
+      attemptsRemaining = enforceAuthRateLimit(request);
     }
     const body = await requestBody(request);
     const accounts = await readAccounts();
@@ -351,7 +353,9 @@ const httpServer = createServer(async (request, response) => {
     }
     if (request.url === '/api/login') {
       const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === String(body.codename || '').trim().toLowerCase());
-      if (!account || !passwordsMatch(String(body.password || ''), account)) throw new Error('That codename or password is not correct.');
+      if (!account || !passwordsMatch(String(body.password || ''), account)) {
+        throw new Error(`That codename or password is not correct. Attempts remaining: ${attemptsRemaining}.`);
+      }
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ codename: account.codename, profile: account.profile || {}, sessionToken: createSession(account) }));
       return;
