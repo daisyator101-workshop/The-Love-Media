@@ -580,17 +580,17 @@ function renderCreateAccountPage() {
 
         <div class="form-group">
           <label for="new-codename">Codename</label>
-          <input id="new-codename" type="text" placeholder="Choose your codename" />
+          <input id="new-codename" name="new-codename" type="text" autocomplete="username" placeholder="Choose your codename" />
         </div>
 
         <div class="form-group">
           <label for="reset-key">Password Reset Key- What do you love about Life?</label>
-          <input id="reset-key" type="text" placeholder="Enter reset key" />
+          <input id="reset-key" name="account-reset-key" type="password" autocomplete="new-password" placeholder="Enter reset key" />
         </div>
 
         <div class="form-group">
           <label for="new-password">Password</label>
-          <input id="new-password" type="password" placeholder="Create a password" />
+          <input id="new-password" name="new-password" type="password" autocomplete="new-password" placeholder="Create a password" />
         </div>
 
         <button class="primary-btn" id="create-account-btn">Create account</button>
