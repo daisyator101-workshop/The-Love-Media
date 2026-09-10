@@ -62,7 +62,7 @@ const stripe = stripeKey ? new Stripe(stripeKey) : null;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || process.env.business_stripe_webhook_secret || process.env.business_STRIPE_WEBHOOK_SECRET;
 const presenceRooms = new Map();
 const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS || `${process.env.FRONTEND_URL || 'http://localhost:3000'},https://the-love-media-6.onrender.com,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173`)
+  `${process.env.ALLOWED_ORIGINS || ''},${process.env.FRONTEND_URL || ''},https://the-love-media-6.onrender.com,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173`
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)
