@@ -13,8 +13,7 @@ services:
         value: https://the-love-media-6.onrender.com
       - key: ALLOWED_ORIGINS
         value: https://the-love-media-6.onrender.com
-      - key: STRIPE_SECRET_KEY
-        sync: false
+      - fromGroup: The-Love-Media-production
       - key: DATABASE_URL
         fromDatabase:
           name: the-love-media-db
