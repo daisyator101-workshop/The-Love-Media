@@ -2,8 +2,14 @@ import './index.css';
 
 const app = document.getElementById('root');
 const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const apiBaseUrl = import.meta.env.VITE_API_URL || (isLocalDevelopment ? `http://${window.location.hostname}:3002` : 'https://the-love-media-api.onrender.com');
-const webSocketBaseUrl = import.meta.env.VITE_WS_URL || (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
+const configuredApiUrl = import.meta.env.VITE_API_URL || '';
+const apiBaseUrl = configuredApiUrl && !configuredApiUrl.includes('the-love-media.onrender.com')
+  ? configuredApiUrl.replace(/\/$/, '')
+  : (isLocalDevelopment ? `http://${window.location.hostname}:3002` : 'https://the-love-media-api.onrender.com');
+const configuredWebSocketUrl = import.meta.env.VITE_WS_URL || '';
+const webSocketBaseUrl = configuredWebSocketUrl && !configuredWebSocketUrl.includes('the-love-media.onrender.com')
+  ? configuredWebSocketUrl.replace(/\/$/, '')
+  : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
