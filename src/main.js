@@ -233,7 +233,15 @@ async function accountApi(path, payload) {
     headers,
     body: JSON.stringify(payload)
   });
-  const result = await response.json();
+  const responseText = await response.text();
+  let result = {};
+  if (responseText) {
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { error: responseText };
+    }
+  }
   if (!response.ok) throw new Error(result.error || 'Account service unavailable.');
   return result;
 }
