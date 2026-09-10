@@ -68,8 +68,8 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 const authRateLimits = new Map();
-const authRateLimitWindowMs = 15 * 60 * 1000;
-const authRateLimitMaxAttempts = 5;
+const authRateLimitWindowMs = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 5 * 60 * 1000);
+const authRateLimitMaxAttempts = Number(process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS || 8);
 const sessions = new Map();
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 const databasePool = process.env.DATABASE_URL
