@@ -1093,7 +1093,15 @@ function openDonationPopup() {
         })
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result = {};
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText);
+        } catch {
+          result = { error: responseText };
+        }
+      }
       if (!response.ok) {
         throw new Error(result.error || 'Checkout could not be started.');
       }
