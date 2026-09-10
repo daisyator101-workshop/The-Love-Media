@@ -3,11 +3,13 @@ import './index.css';
 const app = document.getElementById('root');
 const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const configuredApiUrl = import.meta.env.VITE_API_URL || '';
-const apiBaseUrl = configuredApiUrl && !configuredApiUrl.includes('the-love-media.onrender.com')
+const isKnownStaticSiteUrl = configuredApiUrl.includes('the-love-media.onrender.com')
+  || window.location.hostname === 'the-love-media-6.onrender.com';
+const apiBaseUrl = configuredApiUrl && !isKnownStaticSiteUrl
   ? configuredApiUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `http://${window.location.hostname}:3002` : 'https://the-love-media-api.onrender.com');
 const configuredWebSocketUrl = import.meta.env.VITE_WS_URL || '';
-const webSocketBaseUrl = configuredWebSocketUrl && !configuredWebSocketUrl.includes('the-love-media.onrender.com')
+const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   ? configuredWebSocketUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
 let currentProfileName = 'Gayjesus';
