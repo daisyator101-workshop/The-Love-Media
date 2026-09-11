@@ -194,8 +194,7 @@ function addPrivateMailMessage(friend, sender, text, options = {}) {
 }
 
 function accountCountLabel() {
-  const count = Math.max(1, accounts.length);
-  return `${count} account${count === 1 ? '' : 's'}`;
+  return 'Server accounts';
 }
 
 function accountCount() {
@@ -424,17 +423,7 @@ function renderLoginPage() {
       await rememberBrowserCredential(codename, password, rememberPasswordInput.checked);
       openWelcomePage();
     } catch (error) {
-      const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === codename.toLowerCase());
-      if (account?.password === password) {
-        currentProfileName = account.codename;
-        if (rememberLoginInput.checked) {
-          localStorage.setItem('the-love-media-remembered-login', JSON.stringify({ codename }));
-        }
-        await rememberBrowserCredential(codename, password, rememberPasswordInput.checked);
-        openWelcomePage();
-      } else {
-        status.textContent = error.message;
-      }
+      status.textContent = error.message;
     }
   });
   document.getElementById('email').addEventListener('keydown', (event) => {
