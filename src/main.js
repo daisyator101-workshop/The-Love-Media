@@ -12,6 +12,7 @@ const configuredWebSocketUrl = import.meta.env.VITE_WS_URL || '';
 const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   ? configuredWebSocketUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
+const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
@@ -1085,35 +1086,7 @@ function openDonationPopup() {
     document.getElementById('donation-status').textContent = 'Preparing your secure checkout...';
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/create-checkout-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: Math.round(amount * 100),
-          productName: 'The Love Media support',
-          returnHash: history.state?.returnHash || window.location.hash
-        })
-      });
-
-      const responseText = await response.text();
-      let result = {};
-      if (responseText) {
-        try {
-          result = JSON.parse(responseText);
-        } catch {
-          result = { error: responseText };
-        }
-      }
-      if (!response.ok) {
-        throw new Error(result.error || 'Checkout could not be started.');
-      }
-
-      if (result.url) {
-        window.location.href = result.url;
-        return;
-      }
-
-      throw new Error('No checkout URL was returned.');
+      window.location.href = stripePaymentLink;
     } catch (error) {
       confirmDonationButton.disabled = false;
       confirmDonationButton.textContent = `Donate $${amount.toFixed(2)}`;
