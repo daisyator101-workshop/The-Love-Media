@@ -1536,6 +1536,7 @@ function renderNextPage() {
     try {
       await accountApi('/api/delete-account', { codename: currentProfileName });
       accounts = accounts.filter((account) => account.codename.toLowerCase() !== currentProfileName.toLowerCase());
+      localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
       localStorage.removeItem('the-love-media-profile');
       localStorage.removeItem('the-love-media-friends');
       status.textContent = 'Account deleted.';
