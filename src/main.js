@@ -13,10 +13,6 @@ const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   ? configuredWebSocketUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
-
-// AbortController for managing pending requests
-let requestAbortController = new AbortController();
-
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
@@ -174,11 +170,6 @@ function clearPersistedSession() {
   localStorage.removeItem('the-love-media-profile');
 }
 
-function resetPendingRequests() {
-  requestAbortController.abort();
-  requestAbortController = new AbortController();
-}
-
 function savePrivateMail() {
   localStorage.setItem('the-love-media-private-mail', JSON.stringify(privateMail));
 }
@@ -248,8 +239,7 @@ async function accountApi(path, payload) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(payload),
-    signal: requestAbortController.signal
+    body: JSON.stringify(payload)
   });
   const responseText = await response.text();
   let result = {};
@@ -307,7 +297,6 @@ function setupEmojiPicker(buttonId, pickerId, inputId) {
 }
 
 function renderLoginPage() {
-  resetPendingRequests();
   window.history.replaceState({ screen: 'login' }, '', window.location.pathname);
   const rememberedCredentials = getRememberedCredentials();
   app.innerHTML = `
@@ -412,7 +401,6 @@ function renderLoginPage() {
   });
 
   document.getElementById('login-btn').addEventListener('click', async () => {
-    resetPendingRequests();
     const codename = codenameInput.value.trim();
     const password = passwordInput.value;
     const status = document.getElementById('login-status');
@@ -433,7 +421,8 @@ function renderLoginPage() {
       await rememberBrowserCredential(codename, password, rememberPasswordInput.checked);
       openWelcomePage();
     } catch (error) {
-      status.textContent = error.message;
+      console.error('Login error:', error);
+      status.textContent = error.message || 'Login failed. Please try again.';
     }
   });
   document.getElementById('email').addEventListener('keydown', (event) => {
@@ -920,7 +909,6 @@ function openWelcomePage() {
 }
 
 function renderNextPage() {
-  resetPendingRequests();
   app.innerHTML = `
     <div class="app-shell">
       <div class="floating-hearts welcome-hearts" aria-hidden="true">
