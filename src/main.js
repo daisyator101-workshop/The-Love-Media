@@ -1155,11 +1155,23 @@ function renderWelcomeVideosPage() {
       status.textContent = 'Camera live preview active. Select mode and click "Start recording" when ready.';
     } catch (err) {
       stopCameraPreview();
-      status.textContent = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-        ? 'Camera permission denied. Please allow camera access in your browser location bar.'
-        : (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError'
-          ? 'No camera device found on this system.'
-          : `Camera error: ${err.message || err.name || 'Could not start camera preview.'}`);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        status.innerHTML = `
+          <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 14px; text-align: left; color: #fca5a5; margin-top: 8px;">
+            <strong style="color: #fff; font-size: 0.95rem; display: block; margin-bottom: 6px;">🔒 Camera Permission Blocked in Browser</strong>
+            Your browser blocked camera access for this site. To unblock it:
+            <ol style="margin: 8px 0 8px 20px; padding: 0; line-height: 1.5; font-size: 0.85rem;">
+              <li>Click the <strong>tune/sliders icon</strong> (or camera icon) on the left side of your browser address bar next to <code>the-love-media-6.onrender.com</code>.</li>
+              <li>Toggle <strong>Camera</strong> to <strong>Allow</strong>.</li>
+              <li>Refresh the page and click <strong>"Start camera preview"</strong> again.</li>
+            </ol>
+          </div>
+        `;
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        status.textContent = 'No camera device found on this system. Please connect a webcam.';
+      } else {
+        status.textContent = `Camera error: ${err.message || err.name || 'Could not start camera preview.'}`;
+      }
     }
   };
 
