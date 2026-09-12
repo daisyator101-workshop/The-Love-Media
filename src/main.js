@@ -15,9 +15,13 @@ const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
-let currentProfileBio = 'A little about you goes here.';
-let currentProfileStatuses = [];
-let currentConnectionStatus = '';
+let savedProfileData = null;
+try {
+  savedProfileData = JSON.parse(localStorage.getItem('the-love-media-profile') || 'null');
+} catch {}
+let currentProfileBio = savedProfileData?.bio || 'A little about you goes here.';
+let currentProfileStatuses = savedProfileData?.statuses || [];
+let currentConnectionStatus = savedProfileData?.connectionStatus || '';
 let friends = JSON.parse(localStorage.getItem('the-love-media-friends') || '[]');
 let privateMessageOpener = null;
 let pendingPrivateMessageFriend = null;
@@ -539,9 +543,15 @@ function renderLoginPage() {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
       currentSessionToken = result.sessionToken || '';
-      currentProfileBio = result.profile?.bio || 'A little about you goes here.';
-      currentProfileStatuses = result.profile?.statuses || [];
-      currentConnectionStatus = result.profile?.connectionStatus || '';
+      currentProfileBio = result.profile?.bio || currentProfileBio;
+      currentProfileStatuses = result.profile?.statuses || currentProfileStatuses;
+      currentConnectionStatus = result.profile?.connectionStatus || currentConnectionStatus;
+      localStorage.setItem('the-love-media-profile', JSON.stringify({
+        name: currentProfileName,
+        bio: currentProfileBio,
+        statuses: currentProfileStatuses,
+        connectionStatus: currentConnectionStatus
+      }));
       if (rememberLoginInput.checked) {
         localStorage.setItem('the-love-media-remembered-login', JSON.stringify({ codename }));
       }
@@ -2456,7 +2466,6 @@ function openFriendsConnect() {
   enterGroupChatButton.addEventListener('click', () => {
     groupChatActive = true;
     updateGroupChatStatus();
-    overlay.remove();
     openGroupChatMessagePopup();
   });
   const friendsList = document.getElementById('friends-connect-list');
@@ -2505,6 +2514,10 @@ function openFriendsConnect() {
         inviteButton.textContent = 'Invited';
         inviteButton.disabled = true;
         updateGroupChatStatus();
+        const invitesEl = document.getElementById('group-chat-invites');
+        if (invitesEl) {
+          invitesEl.textContent = `Invited friends: ${groupChatInvites.join(', ')}`;
+        }
       });
       const deleteButton = document.createElement('button');
       deleteButton.className = 'pm-mail-delete friend-delete-button';
@@ -3895,6 +3908,7 @@ const handleAuthHistoryBack = (event) => {
   }
   if (window.location.hash !== '#friends-connect' && document.querySelector('#friends-connect-modal')) {
     document.querySelector('#friends-connect-modal').remove();
+    document.querySelector('#group-chat-message-modal')?.remove();
   }
   if (roomRoute && !document.querySelector('.room-shell')) {
     const roomName = roomNames.find((name) => roomIdForName(name) === roomRoute[1]);
