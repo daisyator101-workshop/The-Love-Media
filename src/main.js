@@ -307,23 +307,116 @@ async function migrateLocalAccounts() {
   localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
 }
 
+const emojiCategories = [
+  {
+    name: 'Smileys',
+    icon: '😀',
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+      '🥹', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋',
+      '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳',
+      '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '😣', '😖', '😫',
+      '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤯', '😳', '🥵',
+      '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🫣', '🤭',
+      '🫢', '🫡', '🤫', '🫠', '🤥', '😶', '😐', '😑', '😬', '🙄',
+      '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵',
+      '😵‍💫', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑',
+      '🤠', '😈', '👿', '🤡', '💩', '👻', '💀', '👽', '🤖', '🎃'
+    ]
+  },
+  {
+    name: 'Pride & Love',
+    icon: '🏳️‍🌈',
+    emojis: [
+      '🏳️‍🌈', '🏳️‍⚧️', '🌈', '🦄', '❤️', '🧡', '💛', '💚', '💙', '💜',
+      '🖤', '🤍', '🤎', '💖', '💗', '💓', '💞', '💕', '❣️', '💔',
+      '❤️‍🔥', '❤️‍🩹', '💘', '💝', '💟', '💋', '💌', '🫂', '💑', '👩‍❤️‍👩',
+      '👨‍❤️‍👨', '💏', '👩‍❤️‍💋‍👩', '👨‍❤️‍💋‍👨', '💐', '🌹', '🌺', '🌸', '✨', '🔥'
+    ]
+  },
+  {
+    name: 'Gestures',
+    icon: '✌️',
+    emojis: [
+      '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🫰', '🤟',
+      '🤘', '👌', '🤌', '🤏', '👈', '👉', '👆', '👇', '☝️', '✋',
+      '🤚', '🖐️', '🖖', '👋', '🤙', '🤝', '👏', '🙌', '👐', '🤲',
+      '🙏', '✍️', '💅', '🤳', '💪', '👀', '👁️', '👅', '👄', '🧠'
+    ]
+  },
+  {
+    name: 'Party & Fun',
+    icon: '🎉',
+    emojis: [
+      '🎉', '🎊', '🎈', '🎂', '🥂', '🍻', '🍹', '🍸', '🍷', '🍾',
+      '🍿', '🍕', '🍔', '🌮', '🍩', '🍫', '🍓', '🍒', '🌟', '💫',
+      '💥', '⚡', '🌙', '☀️', '👑', '💎', '🎵', '🎶', '🎸', '🎤',
+      '🎧', '🎮', '🎲', '🏆', '🥇', '🎯', '🚀', '🛸', '🦋', '🍀'
+    ]
+  }
+];
+
 function setupEmojiPicker(buttonId, pickerId, inputId) {
   const button = document.getElementById(buttonId);
   const picker = document.getElementById(pickerId);
   const input = document.getElementById(inputId);
-  picker.querySelectorAll('button').forEach((emojiButton) => {
-    emojiButton.addEventListener('click', () => {
-      const start = input.selectionStart;
-      const end = input.selectionEnd;
-      input.value = `${input.value.slice(0, start)}${emojiButton.textContent}${input.value.slice(end)}`;
-      input.focus();
-      input.setSelectionRange(start + emojiButton.textContent.length, start + emojiButton.textContent.length);
-      picker.classList.add('hidden');
+  if (!button || !picker || !input) return;
+
+  let currentCategory = 0;
+
+  const renderPicker = () => {
+    picker.innerHTML = `
+      <div class="emoji-picker-header">
+        <div class="emoji-picker-tabs">
+          ${emojiCategories.map((cat, idx) => `
+            <button class="emoji-tab-btn ${idx === currentCategory ? 'active' : ''}" data-cat-idx="${idx}" type="button" title="${cat.name}">
+              ${cat.icon}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <div class="emoji-picker-grid">
+        ${emojiCategories[currentCategory].emojis.map((emoji) => `
+          <button class="emoji-select-btn" type="button">${emoji}</button>
+        `).join('')}
+      </div>
+    `;
+
+    picker.querySelectorAll('.emoji-tab-btn').forEach((tabBtn) => {
+      tabBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentCategory = Number(tabBtn.dataset.catIdx);
+        renderPicker();
+      });
     });
-  });
+
+    picker.querySelectorAll('.emoji-select-btn').forEach((emojiButton) => {
+      emojiButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const start = input.selectionStart || input.value.length;
+        const end = input.selectionEnd || input.value.length;
+        input.value = `${input.value.slice(0, start)}${emojiButton.textContent}${input.value.slice(end)}`;
+        input.focus();
+        input.setSelectionRange(start + emojiButton.textContent.length, start + emojiButton.textContent.length);
+        picker.classList.add('hidden');
+      });
+    });
+  };
+
+  renderPicker();
+
   button.addEventListener('click', (event) => {
     event.stopPropagation();
+    document.querySelectorAll('.emoji-picker').forEach((otherPicker) => {
+      if (otherPicker !== picker) otherPicker.classList.add('hidden');
+    });
     picker.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!picker.contains(event.target) && !button.contains(event.target)) {
+      picker.classList.add('hidden');
+    }
   });
 }
 

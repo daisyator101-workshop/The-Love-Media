@@ -1702,31 +1702,89 @@ button, input {
 .emoji-picker {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 6px);
-  z-index: 8;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  width: 170px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  background: #24183d;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+  bottom: calc(100% + 8px);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  background: rgba(26, 12, 44, 0.96);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
 }
 
 .emoji-picker.hidden {
   display: none;
 }
 
-.emoji-picker button {
-  border: 0;
-  border-radius: 8px;
-  padding: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  font-size: 1.1rem;
-  cursor: pointer;
+.emoji-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 6px;
 }
+
+.emoji-picker-tabs {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.emoji-tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 1.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emoji-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.emoji-tab-btn.active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.emoji-select-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 2px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.emoji-select-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.18);
+}
+
 
 .group-message-compose-row .private-message-compose {
   flex: 1;
