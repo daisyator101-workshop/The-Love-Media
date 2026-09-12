@@ -13,6 +13,10 @@ const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   ? configuredWebSocketUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
+
+// AbortController for managing pending requests
+let requestAbortController = new AbortController();
+
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
@@ -170,6 +174,11 @@ function clearPersistedSession() {
   localStorage.removeItem('the-love-media-profile');
 }
 
+function resetPendingRequests() {
+  requestAbortController.abort();
+  requestAbortController = new AbortController();
+}
+
 function savePrivateMail() {
   localStorage.setItem('the-love-media-private-mail', JSON.stringify(privateMail));
 }
@@ -297,9 +306,8 @@ function setupEmojiPicker(buttonId, pickerId, inputId) {
 }
 
 function renderLoginPage() {
+  resetPendingRequests();
   window.history.replaceState({ screen: 'login' }, '', window.location.pathname);
-    window.history.pushState({ screen: 'forgot-password' }, '', window.location.pathname);
-    renderForgotPasswordPage();
   const rememberedCredentials = getRememberedCredentials();
   app.innerHTML = `
     <div class="app-shell auth-shell">
@@ -910,6 +918,7 @@ function openWelcomePage() {
 }
 
 function renderNextPage() {
+  resetPendingRequests();
   app.innerHTML = `
     <div class="app-shell">
       <div class="floating-hearts welcome-hearts" aria-hidden="true">
@@ -940,7 +949,10 @@ function renderNextPage() {
   document.getElementById('chatroom-btn').addEventListener('click', openChatroomWorkspacePage);
   document.getElementById('welcome-videos-btn').addEventListener('click', openWelcomeVideosModal);
   document.getElementById('gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
-  document.getElementById('back-btn').addEventListener('click', renderLoginPage);
+  document.getElementById('back-btn').addEventListener('click', (event) => {
+    event.preventDefault();
+    window.history.back();
+  });
   document.getElementById('delete-account-btn').addEventListener('click', async () => {
     const status = document.getElementById('account-delete-status');
     if (!window.confirm('Delete your account permanently?')) return;
