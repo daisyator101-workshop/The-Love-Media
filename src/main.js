@@ -2442,7 +2442,10 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
             <div class="private-message-thread" id="private-message-thread" aria-live="polite"></div>
           </div>
           <div class="private-camera-column">
-            <button class="secondary-btn" id="private-camera-btn" type="button">Camera</button>
+            <div class="private-camera-controls">
+              <button class="secondary-btn" id="private-camera-btn" type="button">Camera</button>
+              <button class="secondary-btn private-mic-btn hidden" id="private-mic-btn" type="button" title="Mute or unmute microphone">🎤 Mic On</button>
+            </div>
             <span class="private-camera-status" id="private-camera-status" aria-live="polite"></span>
             ${showCameraPreview ? `
               <div class="private-camera-feeds hidden" id="private-camera-preview-wrap">
@@ -2481,21 +2484,25 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const messageCard = messageModal.querySelector('.private-message-card');
     const dragHandle = messageModal.querySelector('.private-message-drag-handle');
     const resizeHandle = messageModal.querySelector('.private-message-resize-handle');
-    const initialRect = messageCard.getBoundingClientRect();
+    const margin = 12;
+    const targetWidth = Math.min(window.innerWidth - 24, 520);
+    const startLeft = Math.max(margin, (window.innerWidth - targetWidth) / 2);
+    const startTop = Math.max(margin, Math.min(48, (window.innerHeight - 520) / 2));
     messageCard.style.position = 'fixed';
-    messageCard.style.left = `${initialRect.left}px`;
-    messageCard.style.top = `${initialRect.top}px`;
-    messageCard.style.width = `${initialRect.width}px`;
+    messageCard.style.left = `${startLeft}px`;
+    messageCard.style.top = `${startTop}px`;
+    messageCard.style.width = `${targetWidth}px`;
+    messageCard.style.maxHeight = `${window.innerHeight - 24}px`;
     let dragState = null;
     let resizeState = null;
 
     const clampCardPosition = () => {
-      const margin = 12;
+      const currentRect = messageCard.getBoundingClientRect();
       const maxLeft = Math.max(margin, window.innerWidth - messageCard.offsetWidth - margin);
       const maxTop = Math.max(margin, window.innerHeight - messageCard.offsetHeight - margin);
-      const currentRect = messageCard.getBoundingClientRect();
       messageCard.style.left = `${Math.min(Math.max(margin, currentRect.left), maxLeft)}px`;
       messageCard.style.top = `${Math.min(Math.max(margin, currentRect.top), maxTop)}px`;
+      messageCard.style.maxHeight = `${window.innerHeight - 24}px`;
     };
 
     dragHandle.addEventListener('pointerdown', (event) => {
@@ -2520,25 +2527,25 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     });
     resizeHandle.addEventListener('pointermove', (event) => {
       if (!resizeState) return;
-      const width = Math.max(340, resizeState.width + event.clientX - resizeState.startX);
-      const requestedHeight = Math.max(260, resizeState.height + event.clientY - resizeState.startY);
+      const width = Math.max(300, resizeState.width + event.clientX - resizeState.startX);
+      const requestedHeight = Math.max(240, resizeState.height + event.clientY - resizeState.startY);
       messageCard.style.width = `${Math.min(width, window.innerWidth - 24)}px`;
-      messageCard.style.height = 'auto';
-      const contentHeight = messageCard.scrollHeight;
-      messageCard.style.height = `${Math.max(requestedHeight, contentHeight)}px`;
+      messageCard.style.height = `${Math.min(requestedHeight, window.innerHeight - 24)}px`;
       clampCardPosition();
     });
     resizeHandle.addEventListener('pointerup', () => { resizeState = null; });
     resizeHandle.addEventListener('pointercancel', () => { resizeState = null; });
-    window.addEventListener('resize', clampCardPosition, { once: true });
+    window.addEventListener('resize', clampCardPosition);
     setupEmojiPicker('private-emoji-btn', 'private-emoji-picker', 'private-message-input');
     let cameraStream = null;
     let peerConnection = null;
     let signalingSocket = null;
+    let isMicMuted = false;
     const peerId = crypto.randomUUID();
     const pmRoom = 'pm-' + [currentProfileName, name].map((s) => encodeURIComponent(String(s || '').toLowerCase().trim())).sort().join('-');
 
     const cameraButton = document.getElementById('private-camera-btn');
+    const micButton = document.getElementById('private-mic-btn');
     const cameraPreviewWrap = document.getElementById('private-camera-preview-wrap');
     const localVideoCard = document.getElementById('private-local-video-card');
     const localVideo = document.getElementById('private-camera-preview');
@@ -2602,6 +2609,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       peerConnection.ontrack = ({ streams }) => {
         if (remoteVideo && streams[0]) {
           remoteVideo.srcObject = streams[0];
+          remoteVideo.muted = false;
           if (remoteVideoCard) remoteVideoCard.classList.remove('hidden');
           if (cameraPreviewWrap) cameraPreviewWrap.classList.remove('hidden');
           cameraStatus.textContent = `Connected with ${name}.`;
@@ -2676,6 +2684,12 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       if (remoteVideo) remoteVideo.srcObject = null;
       if (remoteVideoCard) remoteVideoCard.classList.add('hidden');
       if (cameraPreviewWrap) cameraPreviewWrap.classList.add('hidden');
+      if (micButton) {
+        micButton.classList.add('hidden');
+        micButton.textContent = '🎤 Mic On';
+        micButton.classList.remove('muted');
+      }
+      isMicMuted = false;
       cameraButton.textContent = 'Camera';
       cameraStatus.textContent = '';
     };
@@ -2696,16 +2710,42 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       }
 
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch {
+          cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
         if (localVideo) localVideo.srcObject = cameraStream;
         if (localVideoCard) localVideoCard.classList.remove('hidden');
         if (cameraPreviewWrap) cameraPreviewWrap.classList.remove('hidden');
         cameraButton.textContent = 'Turn off camera';
+        isMicMuted = false;
+        if (micButton) {
+          micButton.classList.remove('hidden');
+          micButton.textContent = '🎤 Mic On';
+          micButton.classList.remove('muted');
+        }
         cameraStatus.textContent = `Camera active. Waiting for ${name}...`;
         startWebRtc(cameraStream);
       } catch (error) {
         cameraStatus.textContent = 'Camera permission was not granted.';
       }
+    });
+
+    micButton?.addEventListener('click', () => {
+      if (!cameraStream) return;
+      const audioTracks = cameraStream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        cameraStatus.textContent = 'No microphone track available.';
+        return;
+      }
+      isMicMuted = !isMicMuted;
+      audioTracks.forEach((track) => {
+        track.enabled = !isMicMuted;
+      });
+      micButton.textContent = isMicMuted ? '🔇 Mic Muted' : '🎤 Mic On';
+      micButton.classList.toggle('muted', isMicMuted);
+      cameraStatus.textContent = isMicMuted ? 'Microphone muted.' : 'Microphone unmuted.';
     });
 
     const sendPrivateMessage = () => {
