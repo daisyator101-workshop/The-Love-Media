@@ -895,12 +895,49 @@ function openWelcomeVideosPage() {
   renderWelcomeVideosPage();
 }
 
+function getRecordingOptions() {
+  const types = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4'
+  ];
+  for (const type of types) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) {
+      return { mimeType: type };
+    }
+  }
+  return {};
+}
+
 function renderWelcomeVideosPage() {
   const videos = getWelcomeVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
   let recordingStream = null;
   let mediaRecorder = null;
   let recordedChunks = [];
+  let previewCameraStream = null;
+  let cameraStream = null;
+  let screenStream = null;
+
+  const stopAllTracks = () => {
+    if (previewCameraStream) {
+      previewCameraStream.getTracks().forEach((track) => track.stop());
+      previewCameraStream = null;
+    }
+    if (recordingStream) {
+      recordingStream.getTracks().forEach((track) => track.stop());
+      recordingStream = null;
+    }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      screenStream = null;
+    }
+  };
 
   app.innerHTML = `
     <div class="app-shell">
@@ -918,32 +955,59 @@ function renderWelcomeVideosPage() {
           <span class="account-count">${accountCountLabel()}</span>
         </div>
         <h1>Welcome videos</h1>
-        <p>Record fresh content to welcome members to the community.</p>
+        <p>Record fresh content or test your camera setup to welcome members.</p>
         
-        <div id="video-recording-section" style="margin-top: 20px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
-          <div id="recording-preview" style="display: none; margin-bottom: 16px;">
-            <video id="camera-preview" autoplay muted playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+        <div id="video-recording-section" style="margin-top: 20px; padding: 18px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
+          <h3 style="margin: 0 0 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; color: #fff;">
+            <span>📷 Camera & Recording Studio</span>
+          </h3>
+
+          <div id="recording-preview-container" style="position: relative; margin-bottom: 16px; border-radius: 12px; overflow: hidden; background: #000; min-height: 240px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.18);">
+            <video id="camera-preview" autoplay muted playsinline style="width: 100%; height: 100%; min-height: 240px; max-height: 360px; object-fit: cover; display: none;"></video>
+            
+            <div id="camera-placeholder" style="text-align: center; padding: 24px; color: rgba(255,255,255,0.7);">
+              <div style="font-size: 2.8rem; margin-bottom: 8px;">🎥</div>
+              <p style="margin: 0 0 6px; font-weight: 600; color: #fff;">Camera Preview Off</p>
+              <p style="margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.5);">Click "Start camera preview" below to test your webcam.</p>
+            </div>
+
+            <div id="camera-badge" style="display: none; position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); backdrop-filter: blur(4px);">
+              ● LIVE PREVIEW
+            </div>
           </div>
-          <div style="margin-bottom: 12px;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input id="recording-mode-camera" type="radio" name="recording-mode" value="camera" checked style="cursor: pointer;" />
-              <span>Record camera</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
-              <input id="recording-mode-screen" type="radio" name="recording-mode" value="screen" style="cursor: pointer;" />
-              <span>Record screen</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
-              <input id="recording-mode-both" type="radio" name="recording-mode" value="both" style="cursor: pointer;" />
-              <span>Record both (camera in corner)</span>
-            </label>
+
+          <div style="margin-bottom: 14px;">
+            <label for="camera-device-select" style="display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; color: #e2d7f5;">Choose Camera:</label>
+            <select id="camera-device-select" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(20, 10, 35, 0.9); color: #fff; font-size: 0.9rem; cursor: pointer;">
+              <option value="">Default Camera</option>
+            </select>
           </div>
-          <div class="profile-editor-actions">
-            <button class="small-btn" id="preview-recording-btn" type="button">Preview camera</button>
-            <button class="small-btn" id="start-recording-btn" type="button">Start recording</button>
-            <button class="small-btn" id="stop-recording-btn" type="button" style="display: none;">Stop recording</button>
+
+          <div style="margin-bottom: 14px;">
+            <span style="display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; color: #e2d7f5;">Recording Mode:</span>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="recording-mode-camera" type="radio" name="recording-mode" value="camera" checked style="cursor: pointer;" />
+                <span>📷 Record camera</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="recording-mode-screen" type="radio" name="recording-mode" value="screen" style="cursor: pointer;" />
+                <span>🖥️ Record screen</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="recording-mode-both" type="radio" name="recording-mode" value="both" style="cursor: pointer;" />
+                <span>🖼️ Record both (camera in corner)</span>
+              </label>
+            </div>
           </div>
-          <p class="private-message-status" id="recording-status" aria-live="polite"></p>
+
+          <div class="profile-editor-actions" style="display: flex; flex-wrap: wrap; gap: 10px;">
+            <button class="small-btn" id="preview-recording-btn" type="button">Start camera preview</button>
+            <button class="small-btn" id="stop-preview-btn" type="button" style="display: none; background: rgba(255,255,255,0.15);">Stop preview</button>
+            <button class="small-btn" id="start-recording-btn" type="button" style="background: linear-gradient(135deg, #e11d48, #be123c);">🔴 Start recording</button>
+            <button class="small-btn" id="stop-recording-btn" type="button" style="display: none; background: #dc2626;">⏹️ Stop recording</button>
+          </div>
+          <p class="private-message-status" id="recording-status" aria-live="polite" style="margin-top: 10px; font-weight: 600;"></p>
         </div>
 
         <div style="margin-top: 20px;">
@@ -995,18 +1059,53 @@ function renderWelcomeVideosPage() {
 
   // Setup event listeners
   const previewBtn = document.getElementById('preview-recording-btn');
+  const stopPreviewBtn = document.getElementById('stop-preview-btn');
   const startBtn = document.getElementById('start-recording-btn');
   const stopBtn = document.getElementById('stop-recording-btn');
   const status = document.getElementById('recording-status');
-  const previewDiv = document.getElementById('recording-preview');
+  const placeholder = document.getElementById('camera-placeholder');
+  const badge = document.getElementById('camera-badge');
   const cameraPreview = document.getElementById('camera-preview');
+  const deviceSelect = document.getElementById('camera-device-select');
   const cameraRadio = document.getElementById('recording-mode-camera');
   const screenRadio = document.getElementById('recording-mode-screen');
   const bothRadio = document.getElementById('recording-mode-both');
   let currentRecordingMode = 'camera';
-  let cameraStream = null;
-  let screenStream = null;
-  let previewCameraStream = null;
+
+  const populateDevices = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+      if (videoDevices.length > 0) {
+        const currentVal = deviceSelect.value;
+        deviceSelect.innerHTML = videoDevices.map((d, index) => 
+          `<option value="${d.deviceId}">${d.label || `Camera ${index + 1}`}</option>`
+        ).join('');
+        if (currentVal && videoDevices.some((d) => d.deviceId === currentVal)) {
+          deviceSelect.value = currentVal;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  const getCameraStream = async (deviceId) => {
+    const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+    } catch (err1) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+      } catch (err2) {
+        if (deviceId) {
+          return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        throw err2;
+      }
+    }
+  };
 
   const stopCameraPreview = () => {
     if (previewCameraStream) {
@@ -1015,183 +1114,252 @@ function renderWelcomeVideosPage() {
     }
     if (cameraPreview) {
       cameraPreview.srcObject = null;
+      cameraPreview.style.display = 'none';
     }
-  };
-
-  const getCameraStream = async () => {
-    try {
-      return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    } catch {
-      return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    }
+    if (placeholder) placeholder.style.display = 'block';
+    if (badge) badge.style.display = 'none';
+    if (previewBtn) previewBtn.style.display = 'inline-block';
+    if (stopPreviewBtn) stopPreviewBtn.style.display = 'none';
   };
 
   const ensureCameraPreview = async () => {
     if (currentRecordingMode === 'screen') {
-      status.textContent = 'Choose camera or both to preview the camera.';
+      status.textContent = 'Choose "Record camera" or "Record both" to preview your camera.';
       return;
     }
 
     stopCameraPreview();
-    status.textContent = 'Accessing camera...';
-    previewDiv.style.display = 'block';
+    status.textContent = 'Connecting to camera...';
 
     try {
-      previewCameraStream = await getCameraStream();
+      const selectedDeviceId = deviceSelect ? deviceSelect.value : '';
+      previewCameraStream = await getCameraStream(selectedDeviceId);
+      
+      await populateDevices();
+
       if (cameraPreview) {
         cameraPreview.srcObject = previewCameraStream;
+        cameraPreview.muted = true;
+        cameraPreview.style.display = 'block';
         await cameraPreview.play().catch(() => {});
       }
-      status.textContent = 'Camera preview live. When ready, start recording.';
+      if (placeholder) placeholder.style.display = 'none';
+      if (badge) {
+        badge.style.display = 'block';
+        badge.textContent = '● LIVE PREVIEW';
+        badge.style.color = '#4ade80';
+      }
+      if (previewBtn) previewBtn.style.display = 'none';
+      if (stopPreviewBtn) stopPreviewBtn.style.display = 'inline-block';
+
+      status.textContent = 'Camera live preview active. Select mode and click "Start recording" when ready.';
     } catch (err) {
+      stopCameraPreview();
       status.textContent = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-        ? 'Camera permission denied. Please allow camera access in your browser.'
-        : `Could not access camera (${err.message || 'No camera found'}).`;
+        ? 'Camera permission denied. Please allow camera access in your browser location bar.'
+        : (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError'
+          ? 'No camera device found on this system.'
+          : `Camera error: ${err.message || err.name || 'Could not start camera preview.'}`);
     }
   };
 
+  if (deviceSelect) {
+    deviceSelect.addEventListener('change', async () => {
+      if (previewCameraStream) {
+        await ensureCameraPreview();
+      }
+    });
+  }
+
+  populateDevices();
+
   cameraRadio.addEventListener('change', async () => {
     currentRecordingMode = 'camera';
-    previewDiv.style.display = 'none';
-    status.textContent = 'Camera mode selected. Preview before you record.';
-    await ensureCameraPreview();
+    status.textContent = 'Camera mode selected. Click "Start camera preview" to test your camera.';
+    if (previewCameraStream) {
+      await ensureCameraPreview();
+    }
   });
 
   screenRadio.addEventListener('change', () => {
     currentRecordingMode = 'screen';
     stopCameraPreview();
-    previewDiv.style.display = 'none';
-    status.textContent = 'Screen mode selected. Choose a screen to record.';
+    status.textContent = 'Screen mode selected. Click "Start recording" to select a screen or window.';
   });
 
   bothRadio.addEventListener('change', async () => {
     currentRecordingMode = 'both';
-    previewDiv.style.display = 'none';
-    status.textContent = 'Both mode selected. Preview the camera before you record.';
-    await ensureCameraPreview();
+    status.textContent = 'Both mode selected. Preview your camera before recording.';
+    if (previewCameraStream) {
+      await ensureCameraPreview();
+    }
   });
 
-  previewBtn.addEventListener('click', ensureCameraPreview);
+  if (previewBtn) {
+    previewBtn.addEventListener('click', ensureCameraPreview);
+  }
+
+  if (stopPreviewBtn) {
+    stopPreviewBtn.addEventListener('click', stopCameraPreview);
+  }
 
   startBtn.addEventListener('click', async () => {
     try {
       if (currentRecordingMode === 'camera') {
-        if (!previewCameraStream) {
-          previewCameraStream = await getCameraStream();
+        if (!previewCameraStream || !previewCameraStream.active) {
+          const selectedDeviceId = deviceSelect ? deviceSelect.value : '';
+          previewCameraStream = await getCameraStream(selectedDeviceId);
         }
         recordingStream = previewCameraStream;
         if (cameraPreview) {
           cameraPreview.srcObject = recordingStream;
+          cameraPreview.muted = true;
+          cameraPreview.style.display = 'block';
           await cameraPreview.play().catch(() => {});
+        }
+        if (placeholder) placeholder.style.display = 'none';
+        if (badge) {
+          badge.style.display = 'block';
+          badge.textContent = '🔴 RECORDING CAMERA';
+          badge.style.color = '#ef4444';
         }
       } else if (currentRecordingMode === 'screen') {
         recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
         if (cameraPreview) {
           cameraPreview.srcObject = recordingStream;
+          cameraPreview.muted = true;
+          cameraPreview.style.display = 'block';
           await cameraPreview.play().catch(() => {});
         }
+        if (placeholder) placeholder.style.display = 'none';
+        if (badge) {
+          badge.style.display = 'block';
+          badge.textContent = '🖥️ RECORDING SCREEN';
+          badge.style.color = '#ef4444';
+        }
       } else if (currentRecordingMode === 'both') {
-        if (!previewCameraStream) {
-          previewCameraStream = await getCameraStream();
+        if (!previewCameraStream || !previewCameraStream.active) {
+          const selectedDeviceId = deviceSelect ? deviceSelect.value : '';
+          previewCameraStream = await getCameraStream(selectedDeviceId);
         }
         cameraStream = previewCameraStream;
         screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
         
-        // Create canvas for picture-in-picture
         const canvas = document.createElement('canvas');
-        canvas.width = 1920;
-        canvas.height = 1080;
+        canvas.width = 1280;
+        canvas.height = 720;
         const ctx = canvas.getContext('2d');
         
-        // Create video elements for rendering
         const screenVideo = document.createElement('video');
         const cameraVideo = document.createElement('video');
+        screenVideo.muted = true;
+        cameraVideo.muted = true;
         screenVideo.srcObject = screenStream;
         cameraVideo.srcObject = cameraStream;
-        screenVideo.play().catch(() => {});
-        cameraVideo.play().catch(() => {});
+        await screenVideo.play().catch(() => {});
+        await cameraVideo.play().catch(() => {});
         
-        // Get audio from both sources
-        const audioContext = new AudioContext();
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
-        const cameraAudioTrack = cameraStream.getAudioTracks()[0];
         const canvasStream = canvas.captureStream(30);
         
-        // Add audio tracks
+        const screenAudioTrack = screenStream.getAudioTracks()[0];
+        const cameraAudioTrack = cameraStream.getAudioTracks()[0];
         if (screenAudioTrack) canvasStream.addTrack(screenAudioTrack);
         if (cameraAudioTrack) canvasStream.addTrack(cameraAudioTrack);
         
         recordingStream = canvasStream;
         
-        // Animation loop to draw to canvas
+        if (cameraPreview) {
+          cameraPreview.srcObject = recordingStream;
+          cameraPreview.muted = true;
+          cameraPreview.style.display = 'block';
+          await cameraPreview.play().catch(() => {});
+        }
+        if (placeholder) placeholder.style.display = 'none';
+        if (badge) {
+          badge.style.display = 'block';
+          badge.textContent = '🔴 RECORDING BOTH';
+          badge.style.color = '#ef4444';
+        }
+
         const drawLoop = setInterval(() => {
-          if (!screenVideo.paused) {
+          if (!screenVideo.paused && !screenVideo.ended) {
             ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-            // Draw camera in bottom-right corner (250x180)
-            if (!cameraVideo.paused) {
-              ctx.drawImage(cameraVideo, canvas.width - 260, canvas.height - 190, 250, 180);
-              // Add border
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-              ctx.lineWidth = 2;
-              ctx.strokeRect(canvas.width - 260, canvas.height - 190, 250, 180);
+            if (!cameraVideo.paused && !cameraVideo.ended) {
+              const camWidth = 240;
+              const camHeight = 160;
+              ctx.drawImage(cameraVideo, canvas.width - camWidth - 20, canvas.height - camHeight - 20, camWidth, camHeight);
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3;
+              ctx.strokeRect(canvas.width - camWidth - 20, canvas.height - camHeight - 20, camWidth, camHeight);
             }
           }
         }, 1000 / 30);
-        
-        // Store to clean up later
+
         startBtn.dataset.drawLoop = drawLoop;
-        startBtn.dataset.screenVideo = screenVideo;
-        startBtn.dataset.cameraVideo = cameraVideo;
       }
-      
-      previewDiv.style.display = 'block';
+
       recordedChunks = [];
-      mediaRecorder = new MediaRecorder(recordingStream, { mimeType: 'video/webm;codecs=vp9' });
-      mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+      const options = getRecordingOptions();
+      mediaRecorder = new MediaRecorder(recordingStream, options);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
       mediaRecorder.onstop = async () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        recordingStream.getTracks().forEach((track) => track.stop());
-        if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
-        if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
+        const mimeType = options.mimeType || 'video/webm';
+        const blob = new Blob(recordedChunks, { type: mimeType });
         
-        // Clean up both mode resources
         if (startBtn.dataset.drawLoop) {
           clearInterval(parseInt(startBtn.dataset.drawLoop));
           delete startBtn.dataset.drawLoop;
         }
+
+        stopAllTracks();
+        stopCameraPreview();
         
-        previewDiv.style.display = 'none';
-        status.textContent = 'Video recorded! Add a title to save.';
-        
+        status.textContent = 'Video recorded! Enter a title to save:';
         const title = window.prompt('Video title:', 'Welcome video');
         if (title) {
           const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
           const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode, comments: [] };
           const nextVideos = [newVideo, ...getWelcomeVideos()];
           saveWelcomeVideos(nextVideos);
-          status.textContent = 'Video saved!';
+          status.textContent = 'Video saved successfully!';
           setTimeout(() => renderWelcomeVideosPage(), 500);
+        } else {
+          status.textContent = 'Recording discarded.';
         }
       };
+
       mediaRecorder.start();
       startBtn.style.display = 'none';
       stopBtn.style.display = 'inline-block';
+      if (previewBtn) previewBtn.style.display = 'none';
+      if (stopPreviewBtn) stopPreviewBtn.style.display = 'none';
+      if (deviceSelect) deviceSelect.disabled = true;
       cameraRadio.disabled = true;
       screenRadio.disabled = true;
       bothRadio.disabled = true;
-      status.textContent = 'Recording...';
+      status.textContent = 'Recording in progress... Click "Stop recording" when finished.';
     } catch (error) {
-      status.textContent = currentRecordingMode === 'camera' ? 'Camera access denied or not available.' : (currentRecordingMode === 'screen' ? 'Screen share cancelled or not available.' : 'Camera or screen access denied.');
+      status.textContent = `Recording error: ${error.message || 'Could not start recording.'}`;
+      if (deviceSelect) deviceSelect.disabled = false;
       cameraRadio.disabled = false;
       screenRadio.disabled = false;
       bothRadio.disabled = false;
+      startBtn.style.display = 'inline-block';
+      stopBtn.style.display = 'none';
     }
   });
 
   stopBtn.addEventListener('click', () => {
-    mediaRecorder.stop();
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
     startBtn.style.display = 'inline-block';
     stopBtn.style.display = 'none';
+    if (deviceSelect) deviceSelect.disabled = false;
     cameraRadio.disabled = false;
     screenRadio.disabled = false;
     bothRadio.disabled = false;
@@ -1219,7 +1387,6 @@ function renderWelcomeVideosPage() {
     });
   });
 
-  // Delete video buttons
   document.querySelectorAll('.delete-video-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (window.confirm('Delete this video?')) {
@@ -1232,6 +1399,7 @@ function renderWelcomeVideosPage() {
   });
 
   document.getElementById('back-from-videos-btn').addEventListener('click', () => {
+    stopAllTracks();
     window.history.back();
   });
 }
@@ -1491,10 +1659,11 @@ function renderGayjesusBlogPage() {
         
         previewDiv.style.display = 'block';
         recordedChunks = [];
-        mediaRecorder = new MediaRecorder(recordingStream, { mimeType: 'video/webm;codecs=vp9' });
+        const options = getRecordingOptions();
+        mediaRecorder = new MediaRecorder(recordingStream, options);
         mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
         mediaRecorder.onstop = async () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const blob = new Blob(recordedChunks, { type: options.mimeType || 'video/webm' });
           recordingStream.getTracks().forEach((track) => track.stop());
           if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
           if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
