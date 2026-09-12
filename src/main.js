@@ -723,92 +723,148 @@ async function openWelcomeScreenShare(label = 'Welcome & updates') {
   }
 }
 
-function openWelcomeVideosModal() {
-  const existingModal = document.getElementById('welcome-videos-modal');
-  if (existingModal) existingModal.remove();
+function openWelcomeVideosPage() {
+  window.history.pushState({ screen: 'welcome-videos' }, '', `${window.location.pathname}#welcome-videos`);
+  renderWelcomeVideosPage();
+}
 
+function renderWelcomeVideosPage() {
   const videos = getWelcomeVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
+  let recordingStream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
 
-  const modal = document.createElement('div');
-  modal.className = 'profile-editor-modal';
-  modal.id = 'welcome-videos-modal';
-  modal.innerHTML = `
-    <div class="profile-editor-card donation-card">
-      <p class="eyebrow">Welcome & updates</p>
-      <h3>Welcome videos</h3>
-      <p>Fresh drops and welcomes for the room.</p>
-
-      ${isGayjesus ? `
-        <div class="form-group" style="margin-top: 16px;">
-          <label for="welcome-video-title">Video title</label>
-          <input id="welcome-video-title" type="text" placeholder="Welcome reel title" />
-        </div>
-        <div class="form-group">
-          <label for="welcome-video-url">Video URL</label>
-          <input id="welcome-video-url" type="url" placeholder="https://..." />
-        </div>
-        <div class="profile-editor-actions" style="margin-top: 12px;">
-          <button class="small-btn" id="add-welcome-video-btn" type="button">Add video</button>
-          <button class="small-btn" id="start-welcome-screen-share-btn" type="button">Start screen share</button>
-        </div>
-        <p class="private-message-status" id="welcome-video-status" aria-live="polite"></p>
-      ` : `
-        <p class="private-message-status" aria-live="polite">Only Gayjesus can add welcome videos.</p>
-      `}
-
-      <div class="friends-list" id="welcome-videos-list" style="margin-top: 18px;">
-        ${videos.length ? videos.map((video) => `
-          <div class="private-message-item" style="display:block; margin-bottom:12px;">
-            <strong>${video.title || 'Welcome video'}</strong>
-            <div style="margin-top: 8px;">
-              <a href="${video.url}" target="_blank" rel="noreferrer">Open video</a>
-            </div>
-          </div>
-        `).join('') : '<p class="private-message-status">No welcome videos yet.</p>'}
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="floating-hearts welcome-hearts" aria-hidden="true">
+        <span class="heart heart-1">♥</span>
+        <span class="heart heart-2">♥</span>
+        <span class="heart heart-3">♥</span>
+        <span class="heart heart-4">♥</span>
+        <span class="heart heart-5">♥</span>
+        <span class="heart heart-6">♥</span>
       </div>
+      <div class="welcome-card">
+        <div class="brand-row">
+          <p class="eyebrow">Welcome & Updates</p>
+          <span class="account-count">${accountCountLabel()}</span>
+        </div>
+        <h1>Welcome videos</h1>
+        <p>Record fresh content to welcome members to the community.</p>
+        
+        ${isGayjesus ? `
+          <div id="video-recording-section" style="margin-top: 20px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
+            <div id="recording-preview" style="display: none; margin-bottom: 16px;">
+              <video id="camera-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+            </div>
+            <div class="profile-editor-actions">
+              <button class="small-btn" id="start-recording-btn" type="button">Start recording</button>
+              <button class="small-btn" id="stop-recording-btn" type="button" style="display: none;">Stop recording</button>
+            </div>
+            <p class="private-message-status" id="recording-status" aria-live="polite"></p>
+          </div>
+        ` : ''}
 
-      <div class="profile-editor-actions" style="margin-top: 18px;">
-        <button class="secondary-btn" id="close-welcome-videos-btn" type="button">Close</button>
+        <div style="margin-top: 20px;">
+          <h3>Your videos (${videos.length})</h3>
+          <div class="friends-list" id="videos-list">
+            ${videos.length ? videos.map((video) => `
+              <div class="private-message-item" style="display:block; margin-bottom:12px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>${video.title || 'Welcome video'}</strong>
+                  ${isGayjesus ? `<button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+                </div>
+                <video id="video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 200px; object-fit: cover; cursor: pointer;" controls></video>
+              </div>
+            `).join('') : '<p class="private-message-status">No videos yet.</p>'}
+          </div>
+        </div>
+
+        <div class="profile-editor-actions" style="margin-top: 20px;">
+          <button class="secondary-btn" id="back-from-videos-btn" type="button">Back</button>
+        </div>
       </div>
     </div>
   `;
 
-  document.getElementById('root').appendChild(modal);
+  // Load videos into video elements
+  videos.forEach((video) => {
+    const videoElement = document.getElementById(`video-${video.id}`);
+    if (videoElement && video.blob) {
+      const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+      videoElement.src = URL.createObjectURL(blob);
+    }
+  });
 
+  // Setup event listeners
   if (isGayjesus) {
-    const titleInput = document.getElementById('welcome-video-title');
-    const urlInput = document.getElementById('welcome-video-url');
-    const status = document.getElementById('welcome-video-status');
+    const startBtn = document.getElementById('start-recording-btn');
+    const stopBtn = document.getElementById('stop-recording-btn');
+    const status = document.getElementById('recording-status');
+    const previewDiv = document.getElementById('recording-preview');
+    const cameraPreview = document.getElementById('camera-preview');
 
-    document.getElementById('add-welcome-video-btn').addEventListener('click', () => {
-      const title = titleInput.value.trim() || 'Welcome video';
-      const url = urlInput.value.trim();
-
-      if (!url) {
-        status.textContent = 'Add a valid video URL.';
-        return;
+    startBtn.addEventListener('click', async () => {
+      try {
+        recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        cameraPreview.srcObject = recordingStream;
+        previewDiv.style.display = 'block';
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(recordingStream);
+        mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          recordingStream.getTracks().forEach((track) => track.stop());
+          previewDiv.style.display = 'none';
+          status.textContent = 'Video recorded! Add a title to save.';
+          
+          // Prompt for title and save
+          const title = window.prompt('Video title:', 'Welcome video');
+          if (title) {
+            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
+            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now() };
+            const nextVideos = [newVideo, ...getWelcomeVideos()];
+            saveWelcomeVideos(nextVideos);
+            status.textContent = 'Video saved!';
+            setTimeout(() => renderWelcomeVideosPage(), 500);
+          }
+        };
+        mediaRecorder.start();
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        status.textContent = 'Recording...';
+      } catch (error) {
+        status.textContent = 'Camera access denied or not available.';
       }
-
-      const nextVideos = [{ id: crypto.randomUUID(), title, url }, ...getWelcomeVideos()];
-      saveWelcomeVideos(nextVideos);
-      status.textContent = 'Welcome video added.';
-      titleInput.value = '';
-      urlInput.value = '';
-      const list = document.getElementById('welcome-videos-list');
-      list.innerHTML = nextVideos.map((video) => `
-        <div class="private-message-item" style="display:block; margin-bottom:12px;">
-          <strong>${video.title || 'Welcome video'}</strong>
-          <div style="margin-top: 8px;">
-            <a href="${video.url}" target="_blank" rel="noreferrer">Open video</a>
-          </div>
-        </div>
-      `).join('');
     });
-    document.getElementById('start-welcome-screen-share-btn').addEventListener('click', openWelcomeScreenShare);
+
+    stopBtn.addEventListener('click', () => {
+      mediaRecorder.stop();
+      startBtn.style.display = 'inline-block';
+      stopBtn.style.display = 'none';
+    });
+
+    // Delete video buttons
+    document.querySelectorAll('.delete-video-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (window.confirm('Delete this video?')) {
+          const videoId = btn.getAttribute('data-video-id');
+          const nextVideos = getWelcomeVideos().filter((v) => v.id !== videoId);
+          saveWelcomeVideos(nextVideos);
+          renderWelcomeVideosPage();
+        }
+      });
+    });
   }
 
-  document.getElementById('close-welcome-videos-btn').addEventListener('click', () => modal.remove());
+  document.getElementById('back-from-videos-btn').addEventListener('click', () => {
+    window.history.back();
+  });
+}
+
+function openWelcomeVideosModal() {
+  openWelcomeVideosPage();
 }
 
 function openGayjesusBlogPage() {
@@ -2376,6 +2432,10 @@ function renderInitialRoute() {
     renderNextPage();
     return;
   }
+  if (hash === '#welcome-videos') {
+    renderWelcomeVideosPage();
+    return;
+  }
   renderLoginPage();
 }
 
@@ -2399,6 +2459,10 @@ const handleAuthHistoryBack = (event) => {
   }
   if (window.location.hash === '#gayjesus-blog' && !document.querySelector('#gayjesus-blog-modal')) {
     openGayjesusBlogModal();
+    return;
+  }
+  if (window.location.hash === '#welcome-videos' && app.querySelector('.welcome-card h1')?.textContent !== 'Welcome videos') {
+    renderWelcomeVideosPage();
     return;
   }
   if (window.location.hash !== '#friends-connect' && document.querySelector('#friends-connect-modal')) {
