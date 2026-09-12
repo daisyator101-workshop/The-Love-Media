@@ -616,6 +616,20 @@ button, input {
   z-index: 20;
 }
 
+.video-page-shell {
+  min-height: 100vh;
+  padding: 32px 20px 48px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 99, 165, 0.18), transparent 34%),
+    #100f1e;
+}
+
+.video-page-shell .profile-editor-card {
+  width: min(100%, 980px);
+  max-height: none;
+  margin: 0 auto;
+}
+
 .friends-connect-modal {
   position: fixed;
   inset: 0;
@@ -724,6 +738,66 @@ button, input {
   width: 100%;
   max-height: calc(100vh - 190px);
   object-fit: contain;
+}
+
+.video-recorder-card {
+  width: min(100%, 560px);
+}
+
+.video-recorder-preview,
+.saved-video-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 16px 0;
+  border-radius: 14px;
+  background: #101522;
+  object-fit: cover;
+}
+
+.saved-video-preview {
+  max-height: 240px;
+  margin: 0;
+}
+
+.video-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.video-comments {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.video-comments > strong {
+  color: #ffe0ed;
+  font-size: 0.8rem;
+}
+
+.video-comments p {
+  margin: 0;
+  color: #f2dceb;
+  font-size: 0.85rem;
+}
+
+.video-comments-empty {
+  opacity: 0.72;
+}
+
+.video-comment-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.video-comment-form input {
+  min-width: 0;
+  flex: 1;
 }
 
 @media (max-width: 600px) {

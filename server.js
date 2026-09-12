@@ -55,18 +55,25 @@ if (!process.env.STRIPE_SECRET_KEY && !process.env.stripe_secret_key && !process
 }
 
 const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.stripe_secret_key || process.env.business_stripe_secret_key || process.env.business_STRIPE_SECRET_KEY;
-const port = Number(process.env.SIGNALING_PORT || 3002);
+const port = Number(process.env.PORT || process.env.SIGNALING_PORT || 3002);
 const rooms = new Map();
 const accountFile = new URL('./accounts.json', import.meta.url);
 const stripe = stripeKey ? new Stripe(stripeKey) : null;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || process.env.business_stripe_webhook_secret || process.env.business_STRIPE_WEBHOOK_SECRET;
 const presenceRooms = new Map();
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS || `${process.env.FRONTEND_URL || 'http://localhost:3000'},http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173`)
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-);
+const defaultAllowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  'https://the-love-media-6.onrender.com',
+  'https://the-love-media.onrender.com',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]);
 const authRateLimits = new Map();
 const authRateLimitWindowMs = 15 * 60 * 1000;
 const authRateLimitMaxAttempts = 5;
@@ -236,7 +243,7 @@ const httpServer = createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Vary', 'Origin');
   }
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
   response.setHeader('X-Content-Type-Options', 'nosniff');

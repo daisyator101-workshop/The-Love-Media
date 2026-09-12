@@ -10,9 +10,9 @@ services:
       - key: SIGNALING_PORT
         value: 10000
       - key: FRONTEND_URL
-        value: https://the-love-media.onrender.com
+        value: https://the-love-media-6.onrender.com
       - key: ALLOWED_ORIGINS
-        value: https://the-love-media.onrender.com
+        value: https://the-love-media-6.onrender.com
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: DATABASE_URL
