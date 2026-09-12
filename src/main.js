@@ -226,16 +226,30 @@ async function rememberBrowserCredential(codename, password, rememberPassword) {
 }
 
 async function accountApi(path, payload) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (currentSessionToken) headers.Authorization = `Bearer ${currentSessionToken}`;
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Account service unavailable.');
-  return result;
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentSessionToken) headers.Authorization = `Bearer ${currentSessionToken}`;
+    try {
+      const response = await fetch(`${apiBaseUrl}${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        cache: 'no-store'
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Account service unavailable.');
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0 && error instanceof TypeError) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error('Account service unavailable.');
 }
 
 async function migrateLocalAccounts() {
@@ -1072,6 +1086,8 @@ function renderNextPage() {
   document.getElementById('gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('back-btn').addEventListener('click', () => {
     currentSessionToken = '';
+    roomPresenceSocket?.close();
+    roomPresenceSocket = null;
     renderLoginPage();
   });
   document.getElementById('delete-account-btn').addEventListener('click', async () => {
