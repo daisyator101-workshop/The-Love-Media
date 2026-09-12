@@ -1229,18 +1229,30 @@ async function renderWelcomeVideosPage() {
 
   const getCameraStream = async (deviceId) => {
     const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
+    let stream;
     try {
-      return await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
     } catch (err1) {
       try {
-        return await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
       } catch (err2) {
         if (deviceId) {
-          return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } else {
+          throw err2;
         }
-        throw err2;
+      }
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+          stream.addTrack(track);
+        });
+      } catch (audioErr) {
+        console.warn('Microphone access failed:', audioErr);
       }
     }
+    return stream;
   };
 
   const stopCameraPreview = () => {
@@ -1265,7 +1277,7 @@ async function renderWelcomeVideosPage() {
     }
 
     stopCameraPreview();
-    status.textContent = 'Connecting to camera...';
+    status.textContent = 'Connecting to camera & microphone...';
 
     try {
       const selectedDeviceId = deviceSelect ? deviceSelect.value : '';
@@ -1288,17 +1300,23 @@ async function renderWelcomeVideosPage() {
       if (previewBtn) previewBtn.style.display = 'none';
       if (stopPreviewBtn) stopPreviewBtn.style.display = 'inline-block';
 
-      status.textContent = 'Camera live preview active. Select mode and click "Start recording" when ready.';
+      const audioTrackCount = previewCameraStream.getAudioTracks().length;
+      if (audioTrackCount > 0) {
+        previewCameraStream.getAudioTracks().forEach((t) => { t.enabled = true; });
+        status.textContent = '🎙️ Camera & Microphone live preview active. Select mode and click "Start recording" when ready.';
+      } else {
+        status.innerHTML = '📷 Camera preview active. <strong style="color: #fca5a5;">⚠️ Microphone is off or blocked by browser (video will record without sound).</strong>';
+      }
     } catch (err) {
       stopCameraPreview();
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         status.innerHTML = `
           <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 14px; text-align: left; color: #fca5a5; margin-top: 8px;">
-            <strong style="color: #fff; font-size: 0.95rem; display: block; margin-bottom: 6px;">🔒 Camera Permission Blocked in Browser</strong>
-            Your browser blocked camera access for this site. To unblock it:
+            <strong style="color: #fff; font-size: 0.95rem; display: block; margin-bottom: 6px;">🔒 Camera or Microphone Permission Blocked in Browser</strong>
+            Your browser blocked camera or microphone access for this site. To unblock:
             <ol style="margin: 8px 0 8px 20px; padding: 0; line-height: 1.5; font-size: 0.85rem;">
               <li>Click the <strong>tune/sliders icon</strong> (or camera icon) on the left side of your browser address bar next to <code>the-love-media-6.onrender.com</code>.</li>
-              <li>Toggle <strong>Camera</strong> to <strong>Allow</strong>.</li>
+              <li>Ensure both <strong>Camera</strong> and <strong>Microphone</strong> are set to <strong>Allow</strong>.</li>
               <li>Refresh the page and click <strong>"Start camera preview"</strong> again.</li>
             </ol>
           </div>
@@ -1323,7 +1341,7 @@ async function renderWelcomeVideosPage() {
 
   cameraRadio.addEventListener('change', async () => {
     currentRecordingMode = 'camera';
-    status.textContent = 'Camera mode selected. Click "Start camera preview" to test your camera.';
+    status.textContent = 'Camera mode selected. Click "Start camera preview" to test your camera & mic.';
     if (previewCameraStream) {
       await ensureCameraPreview();
     }
@@ -1359,6 +1377,19 @@ async function renderWelcomeVideosPage() {
           previewCameraStream = await getCameraStream(selectedDeviceId);
         }
         recordingStream = previewCameraStream;
+
+        if (recordingStream.getAudioTracks().length === 0) {
+          try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream.getAudioTracks().forEach((track) => {
+              track.enabled = true;
+              recordingStream.addTrack(track);
+            });
+          } catch (micErr) {
+            console.warn('Could not attach mic stream to recording:', micErr);
+          }
+        }
+
         if (cameraPreview) {
           cameraPreview.srcObject = recordingStream;
           cameraPreview.muted = true;
@@ -1366,13 +1397,26 @@ async function renderWelcomeVideosPage() {
           await cameraPreview.play().catch(() => {});
         }
         if (placeholder) placeholder.style.display = 'none';
+
+        const hasMic = recordingStream.getAudioTracks().length > 0;
+        recordingStream.getAudioTracks().forEach((t) => { t.enabled = true; });
+
         if (badge) {
           badge.style.display = 'block';
-          badge.textContent = '🔴 RECORDING CAMERA';
+          badge.textContent = hasMic ? '🔴 RECORDING CAMERA + MIC' : '🔴 RECORDING (NO MIC)';
           badge.style.color = '#ef4444';
         }
       } else if (currentRecordingMode === 'screen') {
         recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStream.getAudioTracks().forEach((track) => {
+            track.enabled = true;
+            recordingStream.addTrack(track);
+          });
+        } catch {}
+
         if (cameraPreview) {
           cameraPreview.srcObject = recordingStream;
           cameraPreview.muted = true;
@@ -1382,7 +1426,7 @@ async function renderWelcomeVideosPage() {
         if (placeholder) placeholder.style.display = 'none';
         if (badge) {
           badge.style.display = 'block';
-          badge.textContent = '🖥️ RECORDING SCREEN';
+          badge.textContent = '🖥️ RECORDING SCREEN + MIC';
           badge.style.color = '#ef4444';
         }
       } else if (currentRecordingMode === 'both') {
