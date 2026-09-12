@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './index.css';
+import { Spinner } from './Spinner';
 
 const liveRooms = [
   { name: 'Sunset Lounge', members: '1.2k', vibe: 'DJ set • open mic' },
@@ -19,6 +20,7 @@ const chatMessages = [
 ];
 
 function App() {
+  const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState('');
 
@@ -34,6 +36,34 @@ function App() {
       setCheckoutStatus('Checkout was cancelled. No charge was made.');
     }
   }, []);
+
+  async function handleLogin() {
+    setIsLoading(true);
+
+    try {
+      // Simulate login API call
+      const response = await fetch('http://localhost:3002/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Add login credentials here
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed.');
+      }
+
+      // Handle successful login - redirect or update state
+      console.log('Login successful:', data);
+    } catch (error) {
+      setCheckoutStatus(error.message || 'Login failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   async function handleCheckout() {
     setIsProcessing(true);
@@ -76,10 +106,22 @@ function App() {
           <h1>Live, social, and welcoming.</h1>
         </div>
         <div className="topbar-actions">
-          <button className="secondary-btn" type="button">Start</button>
-          <button className="primary-btn" type="button" onClick={handleCheckout} disabled={isProcessing}>
-            {isProcessing ? 'Loading...' : 'Premium $20'}
-          </button>
+          {isLoading ? (
+            <div style={{ width: '100%', padding: '14px 18px', marginTop: '0' }}>
+              <Spinner size="sm" text="Logging in..." />
+            </div>
+          ) : (
+            <button className="secondary-btn" type="button" onClick={handleLogin}>Start</button>
+          )}
+          {isProcessing ? (
+            <div style={{ width: '100%', padding: '14px 18px', marginTop: '12px' }}>
+              <Spinner size="sm" text="Processing..." />
+            </div>
+          ) : (
+            <button className="primary-btn" type="button" onClick={handleCheckout}>
+              Premium $20
+            </button>
+          )}
         </div>
       </header>
 
