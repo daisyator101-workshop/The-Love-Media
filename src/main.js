@@ -1004,7 +1004,7 @@ function renderGayjesusBlogPage() {
 
   // Load videos into video elements
   videos.forEach((video) => {
-    const videoElement = document.getElementById(\`blog-video-\${video.id}\`);
+    const videoElement = document.getElementById(`blog-video-${video.id}`);
     if (videoElement && video.blob) {
       const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
       videoElement.src = URL.createObjectURL(blob);
@@ -1145,20 +1145,20 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
   return topics.map((topic) => {
     const topicVideos = videos.filter((video) => (video.topic || 'Welcome') === topic);
 
-    return \`
+    return `
       <div class="private-message-item" style="display:block; margin-bottom:18px;">
-        <strong style="display:block; margin-bottom:8px;">\${topic}</strong>
-        \${topicVideos.map((video) => \`
+        <strong style="display:block; margin-bottom:8px;">${topic}</strong>
+        ${topicVideos.map((video) => `
           <div style="margin-bottom:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <strong>\${video.title || 'Blog video'}</strong>
-              \${isGayjesus ? \`<button class="delete-blog-video-btn" data-video-id="\${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>\` : ''}
+              <strong>${video.title || 'Blog video'}</strong>
+              ${isGayjesus ? `<button class="delete-blog-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
             </div>
-            <video id="blog-video-\${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
+            <video id="blog-video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
           </div>
-        \`).join('')}
+        `).join('')}
       </div>
-    \`;
+    `;
   }).join('');
 }
 
