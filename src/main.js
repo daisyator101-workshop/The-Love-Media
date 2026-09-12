@@ -624,28 +624,70 @@ function renderCreateAccountPage() {
   });
 }
 
+function normalizeVideoComments(video) {
+  return {
+    ...video,
+    comments: Array.isArray(video?.comments) ? video.comments.map((comment) => ({
+      id: comment?.id || crypto.randomUUID(),
+      author: comment?.author || 'Anonymous',
+      text: String(comment?.text || '').trim(),
+      timestamp: Number(comment?.timestamp || Date.now())
+    })).filter((comment) => comment.text) : []
+  };
+}
+
 function getWelcomeVideos() {
   try {
-    return JSON.parse(localStorage.getItem('the-love-media-welcome-videos') || '[]');
+    return (JSON.parse(localStorage.getItem('the-love-media-welcome-videos') || '[]')).map(normalizeVideoComments);
   } catch {
     return [];
   }
 }
 
 function saveWelcomeVideos(videos) {
-  localStorage.setItem('the-love-media-welcome-videos', JSON.stringify(videos));
+  localStorage.setItem('the-love-media-welcome-videos', JSON.stringify((videos || []).map(normalizeVideoComments)));
 }
 
 function getGayjesusBlogVideos() {
   try {
-    return JSON.parse(localStorage.getItem('the-love-media-gayjesus-blog-videos') || '[]');
+    return (JSON.parse(localStorage.getItem('the-love-media-gayjesus-blog-videos') || '[]')).map(normalizeVideoComments);
   } catch {
     return [];
   }
 }
 
 function saveGayjesusBlogVideos(videos) {
-  localStorage.setItem('the-love-media-gayjesus-blog-videos', JSON.stringify(videos));
+  localStorage.setItem('the-love-media-gayjesus-blog-videos', JSON.stringify((videos || []).map(normalizeVideoComments)));
+}
+
+function addVideoComment({ videoId, kind, text }) {
+  const cleaned = String(text || '').trim();
+  if (!cleaned) return;
+
+  const isWelcome = kind === 'welcome';
+  const videos = isWelcome ? getWelcomeVideos() : getGayjesusBlogVideos();
+  const nextVideos = videos.map((video) => {
+    if (video.id !== videoId) return video;
+
+    return {
+      ...video,
+      comments: [
+        ...(Array.isArray(video.comments) ? video.comments : []),
+        {
+          id: crypto.randomUUID(),
+          author: currentProfileName || 'Anonymous',
+          text: cleaned,
+          timestamp: Date.now()
+        }
+      ]
+    };
+  });
+
+  if (isWelcome) {
+    saveWelcomeVideos(nextVideos);
+  } else {
+    saveGayjesusBlogVideos(nextVideos);
+  }
 }
 
 function getBlogTopics(videos) {
@@ -773,6 +815,7 @@ function renderWelcomeVideosPage() {
               </label>
             </div>
             <div class="profile-editor-actions">
+              <button class="small-btn" id="preview-recording-btn" type="button">Preview camera</button>
               <button class="small-btn" id="start-recording-btn" type="button">Start recording</button>
               <button class="small-btn" id="stop-recording-btn" type="button" style="display: none;">Stop recording</button>
             </div>
@@ -790,6 +833,22 @@ function renderWelcomeVideosPage() {
                   ${isGayjesus ? `<button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
                 </div>
                 <video id="video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 200px; object-fit: cover; cursor: pointer;" controls></video>
+                <div style="margin-top: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
+                    ${(video.comments || []).length ? (video.comments || []).map((comment) => `
+                      <div style="display: flex; justify-content: flex-start;">
+                        <div style="max-width: 85%; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: linear-gradient(135deg, rgba(255,130,180,0.22), rgba(255,255,255,0.05)); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 6px 16px rgba(0,0,0,0.12);">
+                          <div style="font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; color: #ffd4e4; margin-bottom: 4px; font-weight: 700;">${comment.author || 'Anonymous'}</div>
+                          <div style="color: #f3f3f3; font-size: 0.86rem; line-height: 1.45;">${comment.text}</div>
+                        </div>
+                      </div>
+                    `).join('') : '<p class="private-message-status">No comments yet.</p>'}
+                  </div>
+                  <div style="display: flex; gap: 8px; margin-top: 10px;">
+                    <input class="comment-input" data-video-id="${video.id}" type="text" placeholder="Add a comment" style="flex: 1; min-width: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); color: #fff; padding: 9px 12px;" />
+                    <button class="comment-submit-btn" data-video-id="${video.id}" type="button" style="padding: 9px 12px; border-radius: 999px; background: linear-gradient(135deg, rgba(255, 128, 174, 0.35), rgba(137,109,255,0.28)); border: 1px solid rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-weight: 700;">Comment</button>
+                  </div>
+                </div>
               </div>
             `).join('') : '<p class="private-message-status">No videos yet.</p>'}
           </div>
@@ -813,6 +872,7 @@ function renderWelcomeVideosPage() {
 
   // Setup event listeners
   if (isGayjesus) {
+    const previewBtn = document.getElementById('preview-recording-btn');
     const startBtn = document.getElementById('start-recording-btn');
     const stopBtn = document.getElementById('stop-recording-btn');
     const status = document.getElementById('recording-status');
@@ -824,33 +884,70 @@ function renderWelcomeVideosPage() {
     let currentRecordingMode = 'camera';
     let cameraStream = null;
     let screenStream = null;
+    let previewCameraStream = null;
 
-    cameraRadio.addEventListener('change', () => {
+    const stopCameraPreview = () => {
+      if (previewCameraStream) {
+        previewCameraStream.getTracks().forEach((track) => track.stop());
+        previewCameraStream = null;
+      }
+      if (cameraPreview) {
+        cameraPreview.srcObject = null;
+      }
+    };
+
+    const ensureCameraPreview = async () => {
+      if (currentRecordingMode === 'screen') {
+        status.textContent = 'Choose camera or both to preview the camera.';
+        return;
+      }
+
+      stopCameraPreview();
+      previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      cameraPreview.srcObject = previewCameraStream;
+      previewDiv.style.display = 'block';
+      status.textContent = 'Camera preview live. When ready, start recording.';
+    };
+
+    cameraRadio.addEventListener('change', async () => {
       currentRecordingMode = 'camera';
       previewDiv.style.display = 'none';
+      status.textContent = 'Camera mode selected. Preview before you record.';
+      await ensureCameraPreview();
     });
 
     screenRadio.addEventListener('change', () => {
       currentRecordingMode = 'screen';
+      stopCameraPreview();
       previewDiv.style.display = 'none';
+      status.textContent = 'Screen mode selected. Choose a screen to record.';
     });
 
-    bothRadio.addEventListener('change', () => {
+    bothRadio.addEventListener('change', async () => {
       currentRecordingMode = 'both';
       previewDiv.style.display = 'none';
+      status.textContent = 'Both mode selected. Preview the camera before you record.';
+      await ensureCameraPreview();
     });
+
+    previewBtn.addEventListener('click', ensureCameraPreview);
 
     startBtn.addEventListener('click', async () => {
       try {
         if (currentRecordingMode === 'camera') {
-          recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (!previewCameraStream) {
+            previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          recordingStream = previewCameraStream;
           cameraPreview.srcObject = recordingStream;
         } else if (currentRecordingMode === 'screen') {
           recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
           cameraPreview.srcObject = recordingStream;
         } else if (currentRecordingMode === 'both') {
-          // Get both camera and screen
-          cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (!previewCameraStream) {
+            previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          cameraStream = previewCameraStream;
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
           
           // Create canvas for picture-in-picture
@@ -922,7 +1019,7 @@ function renderWelcomeVideosPage() {
           const title = window.prompt('Video title:', 'Welcome video');
           if (title) {
             const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode };
+            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode, comments: [] };
             const nextVideos = [newVideo, ...getWelcomeVideos()];
             saveWelcomeVideos(nextVideos);
             status.textContent = 'Video saved!';
@@ -951,6 +1048,28 @@ function renderWelcomeVideosPage() {
       cameraRadio.disabled = false;
       screenRadio.disabled = false;
       bothRadio.disabled = false;
+    });
+
+    document.querySelectorAll('.comment-submit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const videoId = btn.getAttribute('data-video-id');
+        const input = document.querySelector(`.comment-input[data-video-id="${videoId}"]`);
+        if (!input) return;
+        addVideoComment({ videoId, kind: 'welcome', text: input.value });
+        input.value = '';
+        renderWelcomeVideosPage();
+      });
+    });
+
+    document.querySelectorAll('.comment-input').forEach((input) => {
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          const videoId = input.getAttribute('data-video-id');
+          addVideoComment({ videoId, kind: 'welcome', text: input.value });
+          input.value = '';
+          renderWelcomeVideosPage();
+        }
+      });
     });
 
     // Delete video buttons
@@ -1042,6 +1161,7 @@ function renderGayjesusBlogPage() {
               </label>
             </div>
             <div class="profile-editor-actions">
+              <button class="small-btn" id="preview-blog-recording-btn" type="button">Preview camera</button>
               <button class="small-btn" id="start-blog-recording-btn" type="button">Start recording</button>
               <button class="small-btn" id="stop-blog-recording-btn" type="button" style="display: none;">Stop recording</button>
             </div>
@@ -1076,6 +1196,7 @@ function renderGayjesusBlogPage() {
   if (isGayjesus) {
     const titleInput = document.getElementById('blog-video-title');
     const topicInput = document.getElementById('blog-custom-topic');
+    const previewBtn = document.getElementById('preview-blog-recording-btn');
     const startBtn = document.getElementById('start-blog-recording-btn');
     const stopBtn = document.getElementById('stop-blog-recording-btn');
     const status = document.getElementById('blog-recording-status');
@@ -1087,33 +1208,70 @@ function renderGayjesusBlogPage() {
     let currentRecordingMode = 'camera';
     let cameraStream = null;
     let screenStream = null;
+    let previewCameraStream = null;
 
-    cameraRadio.addEventListener('change', () => {
+    const stopCameraPreview = () => {
+      if (previewCameraStream) {
+        previewCameraStream.getTracks().forEach((track) => track.stop());
+        previewCameraStream = null;
+      }
+      if (cameraPreview) {
+        cameraPreview.srcObject = null;
+      }
+    };
+
+    const ensureCameraPreview = async () => {
+      if (currentRecordingMode === 'screen') {
+        status.textContent = 'Choose camera or both to preview the camera.';
+        return;
+      }
+
+      stopCameraPreview();
+      previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      cameraPreview.srcObject = previewCameraStream;
+      previewDiv.style.display = 'block';
+      status.textContent = 'Camera preview live. When ready, start recording.';
+    };
+
+    cameraRadio.addEventListener('change', async () => {
       currentRecordingMode = 'camera';
       previewDiv.style.display = 'none';
+      status.textContent = 'Camera mode selected. Preview before you record.';
+      await ensureCameraPreview();
     });
 
     screenRadio.addEventListener('change', () => {
       currentRecordingMode = 'screen';
+      stopCameraPreview();
       previewDiv.style.display = 'none';
+      status.textContent = 'Screen mode selected. Choose a screen to record.';
     });
 
-    bothRadio.addEventListener('change', () => {
+    bothRadio.addEventListener('change', async () => {
       currentRecordingMode = 'both';
       previewDiv.style.display = 'none';
+      status.textContent = 'Both mode selected. Preview the camera before you record.';
+      await ensureCameraPreview();
     });
+
+    previewBtn.addEventListener('click', ensureCameraPreview);
 
     startBtn.addEventListener('click', async () => {
       try {
         if (currentRecordingMode === 'camera') {
-          recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (!previewCameraStream) {
+            previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          recordingStream = previewCameraStream;
           cameraPreview.srcObject = recordingStream;
         } else if (currentRecordingMode === 'screen') {
           recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
           cameraPreview.srcObject = recordingStream;
         } else if (currentRecordingMode === 'both') {
-          // Get both camera and screen
-          cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          if (!previewCameraStream) {
+            previewCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          cameraStream = previewCameraStream;
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
           
           // Create canvas for picture-in-picture
@@ -1186,7 +1344,7 @@ function renderGayjesusBlogPage() {
           const topic = topicInput.value.trim() || 'Updates';
           if (title) {
             const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode };
+            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode, comments: [] };
             const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
             saveGayjesusBlogVideos(nextVideos);
             status.textContent = 'Video saved!';
@@ -1220,6 +1378,28 @@ function renderGayjesusBlogPage() {
     });
 
     // Delete video buttons
+    document.querySelectorAll('.blog-comment-submit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const videoId = btn.getAttribute('data-video-id');
+        const input = document.querySelector(`.blog-comment-input[data-video-id="${videoId}"]`);
+        if (!input) return;
+        addVideoComment({ videoId, kind: 'blog', text: input.value });
+        input.value = '';
+        renderGayjesusBlogPage();
+      });
+    });
+
+    document.querySelectorAll('.blog-comment-input').forEach((input) => {
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          const videoId = input.getAttribute('data-video-id');
+          addVideoComment({ videoId, kind: 'blog', text: input.value });
+          input.value = '';
+          renderGayjesusBlogPage();
+        }
+      });
+    });
+
     document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (window.confirm('Delete this video?')) {
@@ -1257,6 +1437,22 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
               ${isGayjesus ? `<button class="delete-blog-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
             </div>
             <video id="blog-video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
+            <div style="margin-top: 12px;">
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                ${(video.comments || []).length ? (video.comments || []).map((comment) => `
+                  <div style="display: flex; justify-content: flex-start;">
+                    <div style="max-width: 85%; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: linear-gradient(135deg, rgba(255,130,180,0.22), rgba(255,255,255,0.05)); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 6px 16px rgba(0,0,0,0.12);">
+                      <div style="font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; color: #ffd4e4; margin-bottom: 4px; font-weight: 700;">${comment.author || 'Anonymous'}</div>
+                      <div style="color: #f3f3f3; font-size: 0.86rem; line-height: 1.45;">${comment.text}</div>
+                    </div>
+                  </div>
+                `).join('') : '<p class="private-message-status">No comments yet.</p>'}
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 10px;">
+                <input class="blog-comment-input" data-video-id="${video.id}" type="text" placeholder="Add a comment" style="flex: 1; min-width: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); color: #fff; padding: 9px 12px;" />
+                <button class="blog-comment-submit-btn" data-video-id="${video.id}" type="button" style="padding: 9px 12px; border-radius: 999px; background: linear-gradient(135deg, rgba(255, 128, 174, 0.35), rgba(137,109,255,0.28)); border: 1px solid rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-weight: 700;">Comment</button>
+              </div>
+            </div>
           </div>
         `).join('')}
       </div>
