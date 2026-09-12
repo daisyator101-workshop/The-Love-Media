@@ -813,7 +813,7 @@ function renderWelcomeVideosPage() {
         recordedChunks = [];
         mediaRecorder = new MediaRecorder(recordingStream);
         mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
-        mediaRecorder.onstop = () => {
+        mediaRecorder.onstop = async () => {
           const blob = new Blob(recordedChunks, { type: 'video/webm' });
           recordingStream.getTracks().forEach((track) => track.stop());
           previewDiv.style.display = 'none';
