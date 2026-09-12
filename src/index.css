@@ -1447,7 +1447,6 @@ button, input {
   width: 140px;
   flex-shrink: 0;
   align-self: flex-end;
-  max-height: 240px;
   padding: 12px;
   border-radius: 18px;
   background: rgba(10, 4, 24, 0.28);
@@ -1455,7 +1454,8 @@ button, input {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
+  overflow: visible;
+  position: relative;
 }
 
 .room-side-label {
@@ -1470,6 +1470,15 @@ button, input {
 
 .room-mate-entry {
   position: relative;
+}
+
+.room-mate-entry .profile-menu {
+  bottom: calc(100% + 6px);
+  top: auto;
+  right: 0;
+  left: auto;
+  min-width: 160px;
+  z-index: 30;
 }
 
 .room-mate-trigger {

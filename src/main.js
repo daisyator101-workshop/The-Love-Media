@@ -2226,33 +2226,34 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
     const roomMateMenu = document.createElement('div');
     roomMateMenu.className = 'profile-menu hidden';
-    const openProfileFromName = () => {
-      roomMateMenu.classList.add('hidden');
-      openRoommateProfile(name);
-    };
     ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
       const action = document.createElement('button');
       action.className = 'profile-menu-item';
       action.type = 'button';
       action.textContent = actionName;
       if (actionName === 'Exit') {
-        action.addEventListener('click', () => {
+        action.addEventListener('click', (event) => {
+          event.stopPropagation();
           roomMateMenu.classList.add('hidden');
         });
       }
       if (actionName === 'Profile') {
-        action.addEventListener('click', () => {
-          openProfileFromName();
+        action.addEventListener('click', (event) => {
+          event.stopPropagation();
+          roomMateMenu.classList.add('hidden');
+          openRoommateProfile(name);
         });
       }
       if (actionName === 'Private message') {
-        action.addEventListener('click', () => {
+        action.addEventListener('click', (event) => {
+          event.stopPropagation();
           roomMateMenu.classList.add('hidden');
           openPrivateMessage(name);
         });
       }
       if (actionName === 'Add friend') {
-        action.addEventListener('click', () => {
+        action.addEventListener('click', (event) => {
+          event.stopPropagation();
           if (!friends.includes(name)) {
             friends = [...friends, name];
             localStorage.setItem('the-love-media-friends', JSON.stringify(friends));
@@ -2538,9 +2539,13 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     pendingPrivateMessageFriend = null;
     openPrivateMessage(friendToMessage);
   }
-    roomMate.addEventListener('click', () => {
-      roomMateMenu.classList.add('hidden');
-      openRoommateProfile(name);
+    roomMate.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isHidden = roomMateMenu.classList.contains('hidden');
+      document.querySelectorAll('.profile-menu').forEach((menu) => menu.classList.add('hidden'));
+      if (isHidden) {
+        roomMateMenu.classList.remove('hidden');
+      }
     });
     roomMateEntry.append(roomMate, roomMateMenu);
     roomMatesList.appendChild(roomMateEntry);
