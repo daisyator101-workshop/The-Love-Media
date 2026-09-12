@@ -132,6 +132,8 @@ function renderRoomTiles() {
   }).join('');
 }
 
+let updateActiveRoomMates = () => {};
+
 function connectRoomPresence(roomName = null) {
   roomPresenceSocket?.close();
   roomPresenceSocket = new WebSocket(webSocketBaseUrl);
@@ -147,6 +149,7 @@ function connectRoomPresence(roomName = null) {
     roomMembers = message.members || {};
     updateFeaturedRoomTiles();
     updateRadarMembers();
+    updateActiveRoomMates();
   };
 }
 
@@ -2430,61 +2433,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     roomShell.style.backgroundImage = '';
     document.getElementById('reset-room-background-btn').remove();
   });
-  const roomMatesList = document.getElementById('room-mates-list');
-  const activeRoomMates = [...new Set([
-    currentProfileName,
-    ...(roomMembers[roomIdForName(roomName)] || []),
-    ...accounts.map((a) => (typeof a === 'string' ? a : a?.codename)).filter((name) => name && name !== currentProfileName)
-  ])];
-  activeRoomMates.forEach((name) => {
-    const roomMateEntry = document.createElement('div');
-    roomMateEntry.className = 'room-mate-entry';
-
-    const roomMate = document.createElement('button');
-    roomMate.className = 'room-side-pill room-mate-trigger';
-    roomMate.type = 'button';
-    roomMate.textContent = name;
-
-    const roomMateMenu = document.createElement('div');
-    roomMateMenu.className = 'profile-menu hidden';
-    ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
-      const action = document.createElement('button');
-      action.className = 'profile-menu-item';
-      action.type = 'button';
-      action.textContent = actionName;
-      if (actionName === 'Exit') {
-        action.addEventListener('click', (event) => {
-          event.stopPropagation();
-          roomMateMenu.classList.add('hidden');
-        });
-      }
-      if (actionName === 'Profile') {
-        action.addEventListener('click', (event) => {
-          event.stopPropagation();
-          roomMateMenu.classList.add('hidden');
-          openRoommateProfile(name);
-        });
-      }
-      if (actionName === 'Private message') {
-        action.addEventListener('click', (event) => {
-          event.stopPropagation();
-          roomMateMenu.classList.add('hidden');
-          openPrivateMessage(name);
-        });
-      }
-      if (actionName === 'Add friend') {
-        action.addEventListener('click', (event) => {
-          event.stopPropagation();
-          if (!friends.includes(name)) {
-            friends = [...friends, name];
-            localStorage.setItem('the-love-media-friends', JSON.stringify(friends));
-          }
-          roomMateMenu.classList.add('hidden');
-        });
-      }
-      roomMateMenu.appendChild(action);
-    });
-
 
   function openRoommateProfile(name) {
     const existingProfile = document.getElementById('roommate-profile-modal');
@@ -2911,19 +2859,82 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     pendingPrivateMessageFriend = null;
     openPrivateMessage(friendToMessage);
   }
-    roomMate.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const isHidden = roomMateMenu.classList.contains('hidden');
-      document.querySelectorAll('.profile-menu').forEach((menu) => menu.classList.add('hidden'));
-      if (isHidden) {
-        roomMateMenu.classList.remove('hidden');
-      }
+
+  const updateRoomMates = () => {
+    const list = document.getElementById('room-mates-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const currentRoomId = roomIdForName(roomName);
+    const peersInRoom = (roomMembers[currentRoomId] || []).filter((peerName) => peerName && peerName !== currentProfileName);
+    const activeRoomMates = [currentProfileName, ...new Set(peersInRoom)];
+
+    activeRoomMates.forEach((name) => {
+      const roomMateEntry = document.createElement('div');
+      roomMateEntry.className = 'room-mate-entry';
+
+      const roomMate = document.createElement('button');
+      roomMate.className = 'room-side-pill room-mate-trigger';
+      roomMate.type = 'button';
+      roomMate.textContent = name === currentProfileName ? `${name} (You)` : name;
+
+      const roomMateMenu = document.createElement('div');
+      roomMateMenu.className = 'profile-menu hidden';
+      ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
+        const action = document.createElement('button');
+        action.className = 'profile-menu-item';
+        action.type = 'button';
+        action.textContent = actionName;
+        if (actionName === 'Exit') {
+          action.addEventListener('click', (event) => {
+            event.stopPropagation();
+            roomMateMenu.classList.add('hidden');
+          });
+        }
+        if (actionName === 'Profile') {
+          action.addEventListener('click', (event) => {
+            event.stopPropagation();
+            roomMateMenu.classList.add('hidden');
+            openRoommateProfile(name);
+          });
+        }
+        if (actionName === 'Private message') {
+          action.addEventListener('click', (event) => {
+            event.stopPropagation();
+            roomMateMenu.classList.add('hidden');
+            openPrivateMessage(name);
+          });
+        }
+        if (actionName === 'Add friend') {
+          action.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (!friends.includes(name)) {
+              friends = [...friends, name];
+              localStorage.setItem('the-love-media-friends', JSON.stringify(friends));
+            }
+            roomMateMenu.classList.add('hidden');
+          });
+        }
+        roomMateMenu.appendChild(action);
+      });
+
+      roomMate.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isHidden = roomMateMenu.classList.contains('hidden');
+        document.querySelectorAll('.profile-menu').forEach((menu) => menu.classList.add('hidden'));
+        if (isHidden) {
+          roomMateMenu.classList.remove('hidden');
+        }
+      });
+      roomMateEntry.append(roomMate, roomMateMenu);
+      list.appendChild(roomMateEntry);
     });
-    roomMateEntry.append(roomMate, roomMateMenu);
-    roomMatesList.appendChild(roomMateEntry);
-  });
+  };
+
+  updateActiveRoomMates = updateRoomMates;
+  updateActiveRoomMates();
 
   document.getElementById('exit-room-btn').addEventListener('click', () => {
+    updateActiveRoomMates = () => {};
     groupChatActive = false;
     window.history.back();
   });
