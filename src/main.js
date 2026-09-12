@@ -758,9 +758,14 @@ function renderWelcomeVideosPage() {
             <div id="recording-preview" style="display: none; margin-bottom: 16px;">
               <video id="camera-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
             </div>
+            <div id="screen-share-preview" style="display: none; margin-bottom: 16px;">
+              <video id="screen-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+            </div>
             <div class="profile-editor-actions">
-              <button class="small-btn" id="start-recording-btn" type="button">Start recording</button>
+              <button class="small-btn" id="start-recording-btn" type="button">Record camera</button>
               <button class="small-btn" id="stop-recording-btn" type="button" style="display: none;">Stop recording</button>
+              <button class="small-btn" id="start-screen-share-btn" type="button">Share screen</button>
+              <button class="small-btn" id="stop-screen-share-btn" type="button" style="display: none;">Stop sharing</button>
             </div>
             <p class="private-message-status" id="recording-status" aria-live="polite"></p>
           </div>
@@ -843,6 +848,57 @@ function renderWelcomeVideosPage() {
       mediaRecorder.stop();
       startBtn.style.display = 'inline-block';
       stopBtn.style.display = 'none';
+    });
+
+    // Screen share functionality
+    const startScreenShareBtn = document.getElementById('start-screen-share-btn');
+    const stopScreenShareBtn = document.getElementById('stop-screen-share-btn');
+    const screenPreviewDiv = document.getElementById('screen-share-preview');
+    const screenPreview = document.getElementById('screen-preview');
+    let screenRecordingStream = null;
+    let screenMediaRecorder = null;
+    let screenRecordedChunks = [];
+
+    startScreenShareBtn.addEventListener('click', async () => {
+      try {
+        screenRecordingStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { cursor: 'always' }, 
+          audio: true 
+        });
+        screenPreview.srcObject = screenRecordingStream;
+        screenPreviewDiv.style.display = 'block';
+        screenRecordedChunks = [];
+        screenMediaRecorder = new MediaRecorder(screenRecordingStream);
+        screenMediaRecorder.ondataavailable = (event) => screenRecordedChunks.push(event.data);
+        screenMediaRecorder.onstop = async () => {
+          const blob = new Blob(screenRecordedChunks, { type: 'video/webm' });
+          screenRecordingStream.getTracks().forEach((track) => track.stop());
+          screenPreviewDiv.style.display = 'none';
+          status.textContent = 'Screen recorded! Add a title to save.';
+          
+          const title = window.prompt('Screen share title:', 'Screen recording');
+          if (title) {
+            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
+            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: 'screen' };
+            const nextVideos = [newVideo, ...getWelcomeVideos()];
+            saveWelcomeVideos(nextVideos);
+            status.textContent = 'Screen recording saved!';
+            setTimeout(() => renderWelcomeVideosPage(), 500);
+          }
+        };
+        screenMediaRecorder.start();
+        startScreenShareBtn.style.display = 'none';
+        stopScreenShareBtn.style.display = 'inline-block';
+        status.textContent = 'Sharing your screen...';
+      } catch (error) {
+        status.textContent = 'Screen share cancelled or not available.';
+      }
+    });
+
+    stopScreenShareBtn.addEventListener('click', () => {
+      screenMediaRecorder.stop();
+      startScreenShareBtn.style.display = 'inline-block';
+      stopScreenShareBtn.style.display = 'none';
     });
 
     // Delete video buttons
