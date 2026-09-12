@@ -235,7 +235,10 @@ async function rememberBrowserCredential(codename, password, rememberPassword) {
 
 async function accountApi(path, payload) {
   const headers = { 'Content-Type': 'application/json' };
-  if (currentSessionToken) headers.Authorization = `Bearer ${currentSessionToken}`;
+  // Only send Authorization header for authenticated endpoints (not login/register)
+  if (currentSessionToken && !path.includes('/login') && !path.includes('/accounts')) {
+    headers.Authorization = `Bearer ${currentSessionToken}`;
+  }
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: 'POST',
     headers,
