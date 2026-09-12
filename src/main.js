@@ -248,7 +248,8 @@ async function accountApi(path, payload) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: requestAbortController.signal
   });
   const responseText = await response.text();
   let result = {};
@@ -411,6 +412,7 @@ function renderLoginPage() {
   });
 
   document.getElementById('login-btn').addEventListener('click', async () => {
+    resetPendingRequests();
     const codename = codenameInput.value.trim();
     const password = passwordInput.value;
     const status = document.getElementById('login-status');
