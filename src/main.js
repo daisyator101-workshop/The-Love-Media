@@ -1034,6 +1034,72 @@ function getRecordingOptions() {
   return {};
 }
 
+function createMixedAudioStream(streams) {
+  const validStreams = (streams || []).filter(
+    (s) => s && typeof s.getAudioTracks === 'function' && s.getAudioTracks().some((t) => t.readyState === 'live')
+  );
+
+  if (validStreams.length === 0) {
+    return { stream: new MediaStream(), close: () => {} };
+  }
+
+  validStreams.forEach((s) => s.getAudioTracks().forEach((t) => { t.enabled = true; }));
+
+  if (validStreams.length === 1 && validStreams[0].getAudioTracks().length === 1) {
+    const originalTrack = validStreams[0].getAudioTracks()[0];
+    const cloneTrack = originalTrack.clone();
+    cloneTrack.enabled = true;
+    return {
+      stream: new MediaStream([cloneTrack]),
+      close: () => {
+        try { cloneTrack.stop(); } catch {}
+      }
+    };
+  }
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    const tracks = validStreams.flatMap((s) => s.getAudioTracks());
+    return { stream: new MediaStream(tracks), close: () => {} };
+  }
+
+  try {
+    const audioCtx = new AudioCtx();
+    const dest = audioCtx.createMediaStreamDestination();
+    let connectedCount = 0;
+
+    validStreams.forEach((stream) => {
+      try {
+        if (stream.getAudioTracks().length > 0) {
+          const source = audioCtx.createMediaStreamSource(stream);
+          source.connect(dest);
+          connectedCount++;
+        }
+      } catch (err) {
+        console.warn('AudioContext source connect error:', err);
+      }
+    });
+
+    if (connectedCount === 0) {
+      audioCtx.close().catch(() => {});
+      return { stream: new MediaStream(), close: () => {} };
+    }
+
+    return {
+      stream: dest.stream,
+      close: () => {
+        try {
+          audioCtx.close();
+        } catch {}
+      }
+    };
+  } catch (e) {
+    console.warn('Error mixing audio streams:', e);
+    const tracks = validStreams.flatMap((s) => s.getAudioTracks());
+    return { stream: new MediaStream(tracks), close: () => {} };
+  }
+}
+
 async function renderWelcomeVideosPage() {
   const videos = await getWelcomeVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
@@ -1043,8 +1109,13 @@ async function renderWelcomeVideosPage() {
   let previewCameraStream = null;
   let cameraStream = null;
   let screenStream = null;
+  let audioMixer = null;
 
   const stopAllTracks = () => {
+    if (audioMixer) {
+      audioMixer.close();
+      audioMixer = null;
+    }
     if (previewCameraStream) {
       previewCameraStream.getTracks().forEach((track) => track.stop());
       previewCameraStream = null;
@@ -1376,30 +1447,32 @@ async function renderWelcomeVideosPage() {
           const selectedDeviceId = deviceSelect ? deviceSelect.value : '';
           previewCameraStream = await getCameraStream(selectedDeviceId);
         }
-        recordingStream = previewCameraStream;
-
-        if (recordingStream.getAudioTracks().length === 0) {
+        let micStream = null;
+        if (previewCameraStream.getAudioTracks().length === 0) {
           try {
-            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            micStream.getAudioTracks().forEach((track) => {
-              track.enabled = true;
-              recordingStream.addTrack(track);
-            });
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           } catch (micErr) {
-            console.warn('Could not attach mic stream to recording:', micErr);
+            console.warn('Could not attach mic stream to camera recording:', micErr);
           }
         }
+        audioMixer = createMixedAudioStream([previewCameraStream, micStream]);
+
+        const videoTrack = previewCameraStream.getVideoTracks()[0];
+        const audioTrack = audioMixer.stream.getAudioTracks()[0];
+        const tracks = [videoTrack].filter(Boolean);
+        if (audioTrack) tracks.push(audioTrack);
+
+        recordingStream = new MediaStream(tracks);
 
         if (cameraPreview) {
-          cameraPreview.srcObject = recordingStream;
+          cameraPreview.srcObject = previewCameraStream;
           cameraPreview.muted = true;
           cameraPreview.style.display = 'block';
           await cameraPreview.play().catch(() => {});
         }
         if (placeholder) placeholder.style.display = 'none';
 
-        const hasMic = recordingStream.getAudioTracks().length > 0;
-        recordingStream.getAudioTracks().forEach((t) => { t.enabled = true; });
+        const hasMic = audioMixer.stream.getAudioTracks().length > 0;
 
         if (badge) {
           badge.style.display = 'block';
@@ -1407,26 +1480,35 @@ async function renderWelcomeVideosPage() {
           badge.style.color = '#ef4444';
         }
       } else if (currentRecordingMode === 'screen') {
-        recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
-        
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        let micStream = null;
         try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStream.getAudioTracks().forEach((track) => {
-            track.enabled = true;
-            recordingStream.addTrack(track);
-          });
-        } catch {}
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (micErr) {
+          console.warn('Could not get mic for screen recording:', micErr);
+        }
+
+        audioMixer = createMixedAudioStream([screenStream, micStream]);
+
+        const videoTrack = screenStream.getVideoTracks()[0];
+        const audioTrack = audioMixer.stream.getAudioTracks()[0];
+        const tracks = [videoTrack].filter(Boolean);
+        if (audioTrack) tracks.push(audioTrack);
+
+        recordingStream = new MediaStream(tracks);
 
         if (cameraPreview) {
-          cameraPreview.srcObject = recordingStream;
+          cameraPreview.srcObject = screenStream;
           cameraPreview.muted = true;
           cameraPreview.style.display = 'block';
           await cameraPreview.play().catch(() => {});
         }
         if (placeholder) placeholder.style.display = 'none';
+
+        const hasAudio = audioMixer.stream.getAudioTracks().length > 0;
         if (badge) {
           badge.style.display = 'block';
-          badge.textContent = '🖥️ RECORDING SCREEN + MIC';
+          badge.textContent = hasAudio ? '🖥️ RECORDING SCREEN + AUDIO' : '🖥️ RECORDING SCREEN (NO AUDIO)';
           badge.style.color = '#ef4444';
         }
       } else if (currentRecordingMode === 'both') {
@@ -1435,8 +1517,17 @@ async function renderWelcomeVideosPage() {
           previewCameraStream = await getCameraStream(selectedDeviceId);
         }
         cameraStream = previewCameraStream;
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
         
+        let micStream = null;
+        if (cameraStream.getAudioTracks().length === 0) {
+          try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          } catch {}
+        }
+
+        audioMixer = createMixedAudioStream([cameraStream, screenStream, micStream]);
+
         const canvas = document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
@@ -1452,24 +1543,26 @@ async function renderWelcomeVideosPage() {
         await cameraVideo.play().catch(() => {});
         
         const canvasStream = canvas.captureStream(30);
-        
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
-        const cameraAudioTrack = cameraStream.getAudioTracks()[0];
-        if (screenAudioTrack) canvasStream.addTrack(screenAudioTrack);
-        if (cameraAudioTrack) canvasStream.addTrack(cameraAudioTrack);
-        
-        recordingStream = canvasStream;
+        const canvasVideoTrack = canvasStream.getVideoTracks()[0];
+        const mixedAudioTrack = audioMixer.stream.getAudioTracks()[0];
+
+        const tracks = [canvasVideoTrack].filter(Boolean);
+        if (mixedAudioTrack) tracks.push(mixedAudioTrack);
+
+        recordingStream = new MediaStream(tracks);
         
         if (cameraPreview) {
-          cameraPreview.srcObject = recordingStream;
+          cameraPreview.srcObject = canvasStream;
           cameraPreview.muted = true;
           cameraPreview.style.display = 'block';
           await cameraPreview.play().catch(() => {});
         }
         if (placeholder) placeholder.style.display = 'none';
+        
+        const hasAudio = audioMixer.stream.getAudioTracks().length > 0;
         if (badge) {
           badge.style.display = 'block';
-          badge.textContent = '🔴 RECORDING BOTH';
+          badge.textContent = hasAudio ? '🔴 RECORDING BOTH + AUDIO' : '🔴 RECORDING BOTH (NO AUDIO)';
           badge.style.color = '#ef4444';
         }
 
@@ -1735,6 +1828,7 @@ async function renderGayjesusBlogPage() {
   let cameraStream = null;
   let screenStream = null;
   let previewCameraStream = null;
+  let audioMixer = null;
 
   const stopCameraPreview = () => {
     if (previewCameraStream) {
@@ -1807,15 +1901,36 @@ async function renderGayjesusBlogPage() {
         if (!previewCameraStream) {
           previewCameraStream = await getBlogCameraStream();
         }
-        recordingStream = previewCameraStream;
+        let micStream = null;
+        if (previewCameraStream.getAudioTracks().length === 0) {
+          try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+        }
+        audioMixer = createMixedAudioStream([previewCameraStream, micStream]);
+        const videoTrack = previewCameraStream.getVideoTracks()[0];
+        const audioTrack = audioMixer.stream.getAudioTracks()[0];
+        const tracks = [videoTrack].filter(Boolean);
+        if (audioTrack) tracks.push(audioTrack);
+        recordingStream = new MediaStream(tracks);
+
         if (cameraPreview) {
-          cameraPreview.srcObject = recordingStream;
+          cameraPreview.srcObject = previewCameraStream;
+          cameraPreview.muted = true;
           await cameraPreview.play().catch(() => {});
         }
       } else if (currentRecordingMode === 'screen') {
-        recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        let micStream = null;
+        try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+        audioMixer = createMixedAudioStream([screenStream, micStream]);
+        const videoTrack = screenStream.getVideoTracks()[0];
+        const audioTrack = audioMixer.stream.getAudioTracks()[0];
+        const tracks = [videoTrack].filter(Boolean);
+        if (audioTrack) tracks.push(audioTrack);
+        recordingStream = new MediaStream(tracks);
+
         if (cameraPreview) {
-          cameraPreview.srcObject = recordingStream;
+          cameraPreview.srcObject = screenStream;
+          cameraPreview.muted = true;
           await cameraPreview.play().catch(() => {});
         }
       } else if (currentRecordingMode === 'both') {
@@ -1823,77 +1938,80 @@ async function renderGayjesusBlogPage() {
           previewCameraStream = await getBlogCameraStream();
         }
         cameraStream = previewCameraStream;
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false });
-        
-        // Create canvas for picture-in-picture
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        let micStream = null;
+        if (cameraStream.getAudioTracks().length === 0) {
+          try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+        }
+        audioMixer = createMixedAudioStream([cameraStream, screenStream, micStream]);
+
         const canvas = document.createElement('canvas');
         canvas.width = 1920;
         canvas.height = 1080;
         const ctx = canvas.getContext('2d');
         
-        // Create video elements for rendering
         const screenVideo = document.createElement('video');
         const cameraVideo = document.createElement('video');
+        screenVideo.muted = true;
+        cameraVideo.muted = true;
         screenVideo.srcObject = screenStream;
         cameraVideo.srcObject = cameraStream;
-        screenVideo.play().catch(() => {});
-        cameraVideo.play().catch(() => {});
+        await screenVideo.play().catch(() => {});
+        await cameraVideo.play().catch(() => {});
         
-        // Get audio from both sources
-        const audioContext = new AudioContext();
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
-        const cameraAudioTrack = cameraStream.getAudioTracks()[0];
         const canvasStream = canvas.captureStream(30);
-          
-          // Add audio tracks
-          if (screenAudioTrack) canvasStream.addTrack(screenAudioTrack);
-          if (cameraAudioTrack) canvasStream.addTrack(cameraAudioTrack);
-          
-          recordingStream = canvasStream;
-          
-          // Animation loop to draw to canvas
-          const drawLoop = setInterval(() => {
-            if (!screenVideo.paused) {
-              ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-              // Draw camera in bottom-right corner (250x180)
-              if (!cameraVideo.paused) {
-                ctx.drawImage(cameraVideo, canvas.width - 260, canvas.height - 190, 250, 180);
-                // Add border
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(canvas.width - 260, canvas.height - 190, 250, 180);
-              }
+        const videoTrack = canvasStream.getVideoTracks()[0];
+        const audioTrack = audioMixer.stream.getAudioTracks()[0];
+        const tracks = [videoTrack].filter(Boolean);
+        if (audioTrack) tracks.push(audioTrack);
+        recordingStream = new MediaStream(tracks);
+
+        // Animation loop to draw to canvas
+        const drawLoop = setInterval(() => {
+          if (!screenVideo.paused) {
+            ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+            // Draw camera in bottom-right corner (250x180)
+            if (!cameraVideo.paused) {
+              ctx.drawImage(cameraVideo, canvas.width - 260, canvas.height - 190, 250, 180);
+              // Add border
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+              ctx.lineWidth = 2;
+              ctx.strokeRect(canvas.width - 260, canvas.height - 190, 250, 180);
             }
-          }, 1000 / 30);
-          
-          // Store to clean up later
-          startBtn.dataset.drawLoop = drawLoop;
-          startBtn.dataset.screenVideo = screenVideo;
-          startBtn.dataset.cameraVideo = cameraVideo;
+          }
+        }, 1000 / 30);
+        
+        startBtn.dataset.drawLoop = drawLoop;
+        startBtn.dataset.screenVideo = screenVideo;
+        startBtn.dataset.cameraVideo = cameraVideo;
+      }
+      
+      previewDiv.style.display = 'block';
+      recordedChunks = [];
+      const options = getRecordingOptions();
+      mediaRecorder = new MediaRecorder(recordingStream, options);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+      mediaRecorder.onstop = async () => {
+        if (audioMixer) {
+          audioMixer.close();
+          audioMixer = null;
+        }
+        const mimeType = options.mimeType || 'video/webm';
+        const blob = new Blob(recordedChunks, { type: mimeType });
+        recordingStream.getTracks().forEach((track) => track.stop());
+        if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+        if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
+        
+        if (startBtn.dataset.drawLoop) {
+          clearInterval(parseInt(startBtn.dataset.drawLoop));
+          delete startBtn.dataset.drawLoop;
         }
         
-        previewDiv.style.display = 'block';
-        recordedChunks = [];
-        const options = getRecordingOptions();
-        mediaRecorder = new MediaRecorder(recordingStream, options);
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            recordedChunks.push(event.data);
-          }
-        };
-        mediaRecorder.onstop = async () => {
-          const mimeType = options.mimeType || 'video/webm';
-          const blob = new Blob(recordedChunks, { type: mimeType });
-          recordingStream.getTracks().forEach((track) => track.stop());
-          if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
-          if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
-          
-          if (startBtn.dataset.drawLoop) {
-            clearInterval(parseInt(startBtn.dataset.drawLoop));
-            delete startBtn.dataset.drawLoop;
-          }
-          
-          previewDiv.style.display = 'none';
+        previewDiv.style.display = 'none';
           status.textContent = 'Video recorded! Add a title and topic to save.';
           
           const title = titleInput.value.trim() || 'Blog video';
