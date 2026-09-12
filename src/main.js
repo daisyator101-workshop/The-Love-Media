@@ -749,6 +749,7 @@ function renderCreateAccountPage() {
 }
 
 function normalizeVideoComments(video) {
+  if (!video) return video;
   return {
     ...video,
     comments: Array.isArray(video?.comments) ? video.comments.map((comment) => ({
@@ -760,7 +761,54 @@ function normalizeVideoComments(video) {
   };
 }
 
-function getWelcomeVideos() {
+const DB_NAME = 'the-love-media-video-db';
+const DB_VERSION = 1;
+const VIDEO_STORE = 'videos';
+
+function openVideoDB() {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') {
+      resolve(null);
+      return;
+    }
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(VIDEO_STORE)) {
+          db.createObjectStore(VIDEO_STORE, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = (event) => resolve(event.target.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+const memoryVideosMap = new Map();
+
+async function getWelcomeVideos() {
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      const all = await new Promise((resolve) => {
+        const tx = db.transaction(VIDEO_STORE, 'readonly');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+      const welcomeVids = all.filter((v) => (v.kind || 'welcome') === 'welcome').sort((a, b) => b.timestamp - a.timestamp);
+      if (welcomeVids.length > 0) return welcomeVids.map(normalizeVideoComments);
+    } catch (e) {
+      console.warn('IndexedDB read error:', e);
+    }
+  }
+  const mem = Array.from(memoryVideosMap.values()).filter((v) => (v.kind || 'welcome') === 'welcome').sort((a, b) => b.timestamp - a.timestamp);
+  if (mem.length > 0) return mem.map(normalizeVideoComments);
+
   try {
     return (JSON.parse(localStorage.getItem('the-love-media-welcome-videos') || '[]')).map(normalizeVideoComments);
   } catch {
@@ -768,11 +816,61 @@ function getWelcomeVideos() {
   }
 }
 
-function saveWelcomeVideos(videos) {
-  localStorage.setItem('the-love-media-welcome-videos', JSON.stringify((videos || []).map(normalizeVideoComments)));
+async function saveWelcomeVideo(video) {
+  video.kind = 'welcome';
+  memoryVideosMap.set(video.id, video);
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.put(video);
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    } catch (e) {
+      console.warn('IndexedDB save error:', e);
+    }
+  }
 }
 
-function getGayjesusBlogVideos() {
+async function deleteWelcomeVideo(id) {
+  memoryVideosMap.delete(id);
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      await new Promise((resolve) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+      });
+    } catch {}
+  }
+}
+
+async function getGayjesusBlogVideos() {
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      const all = await new Promise((resolve) => {
+        const tx = db.transaction(VIDEO_STORE, 'readonly');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+      const blogVids = all.filter((v) => v.kind === 'blog').sort((a, b) => b.timestamp - a.timestamp);
+      if (blogVids.length > 0) return blogVids.map(normalizeVideoComments);
+    } catch (e) {
+      console.warn('IndexedDB read error:', e);
+    }
+  }
+  const mem = Array.from(memoryVideosMap.values()).filter((v) => v.kind === 'blog').sort((a, b) => b.timestamp - a.timestamp);
+  if (mem.length > 0) return mem.map(normalizeVideoComments);
+
   try {
     return (JSON.parse(localStorage.getItem('the-love-media-gayjesus-blog-videos') || '[]')).map(normalizeVideoComments);
   } catch {
@@ -780,37 +878,63 @@ function getGayjesusBlogVideos() {
   }
 }
 
-function saveGayjesusBlogVideos(videos) {
-  localStorage.setItem('the-love-media-gayjesus-blog-videos', JSON.stringify((videos || []).map(normalizeVideoComments)));
+async function saveGayjesusBlogVideo(video) {
+  video.kind = 'blog';
+  memoryVideosMap.set(video.id, video);
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.put(video);
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    } catch (e) {
+      console.warn('IndexedDB save error:', e);
+    }
+  }
 }
 
-function addVideoComment({ videoId, kind, text }) {
+async function deleteGayjesusBlogVideo(id) {
+  memoryVideosMap.delete(id);
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      await new Promise((resolve) => {
+        const tx = db.transaction(VIDEO_STORE, 'readwrite');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+      });
+    } catch {}
+  }
+}
+
+async function addVideoComment({ videoId, kind, text }) {
   const cleaned = String(text || '').trim();
   if (!cleaned) return;
 
   const isWelcome = kind === 'welcome';
-  const videos = isWelcome ? getWelcomeVideos() : getGayjesusBlogVideos();
-  const nextVideos = videos.map((video) => {
-    if (video.id !== videoId) return video;
-
-    return {
-      ...video,
-      comments: [
-        ...(Array.isArray(video.comments) ? video.comments : []),
-        {
-          id: crypto.randomUUID(),
-          author: currentProfileName || 'Anonymous',
-          text: cleaned,
-          timestamp: Date.now()
-        }
-      ]
-    };
-  });
-
-  if (isWelcome) {
-    saveWelcomeVideos(nextVideos);
-  } else {
-    saveGayjesusBlogVideos(nextVideos);
+  const videos = isWelcome ? await getWelcomeVideos() : await getGayjesusBlogVideos();
+  const targetVideo = videos.find((v) => v.id === videoId);
+  if (targetVideo) {
+    targetVideo.comments = [
+      ...(Array.isArray(targetVideo.comments) ? targetVideo.comments : []),
+      {
+        id: crypto.randomUUID(),
+        author: currentProfileName || 'Anonymous',
+        text: cleaned,
+        timestamp: Date.now()
+      }
+    ];
+    if (isWelcome) {
+      await saveWelcomeVideo(targetVideo);
+    } else {
+      await saveGayjesusBlogVideo(targetVideo);
+    }
   }
 }
 
@@ -910,8 +1034,8 @@ function getRecordingOptions() {
   return {};
 }
 
-function renderWelcomeVideosPage() {
-  const videos = getWelcomeVideos();
+async function renderWelcomeVideosPage() {
+  const videos = await getWelcomeVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
   let recordingStream = null;
   let mediaRecorder = null;
@@ -1052,8 +1176,20 @@ function renderWelcomeVideosPage() {
   videos.forEach((video) => {
     const videoElement = document.getElementById(`video-${video.id}`);
     if (videoElement && video.blob) {
-      const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
-      videoElement.src = URL.createObjectURL(blob);
+      try {
+        let blobUrl;
+        if (video.blob instanceof Blob) {
+          blobUrl = URL.createObjectURL(video.blob);
+        } else if (Array.isArray(video.blob) || video.blob instanceof Uint8Array || video.blob.buffer) {
+          const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+          blobUrl = URL.createObjectURL(blob);
+        }
+        if (blobUrl) {
+          videoElement.src = blobUrl;
+        }
+      } catch (e) {
+        console.warn('Error displaying video:', e);
+      }
     }
   });
 
@@ -1329,22 +1465,34 @@ function renderWelcomeVideosPage() {
 
         stopAllTracks();
         stopCameraPreview();
-        
+
+        if (!blob || blob.size === 0) {
+          status.textContent = 'Recorded video was empty. Please try recording again.';
+          return;
+        }
+
         status.textContent = 'Video recorded! Enter a title to save:';
         const title = window.prompt('Video title:', 'Welcome video');
         if (title) {
-          const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-          const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode, comments: [] };
-          const nextVideos = [newVideo, ...getWelcomeVideos()];
-          saveWelcomeVideos(nextVideos);
-          status.textContent = 'Video saved successfully!';
-          setTimeout(() => renderWelcomeVideosPage(), 500);
+          status.textContent = 'Posting video...';
+          const newVideo = {
+            id: crypto.randomUUID(),
+            title: title.trim() || 'Welcome video',
+            blob: blob,
+            timestamp: Date.now(),
+            type: currentRecordingMode,
+            comments: [],
+            kind: 'welcome'
+          };
+          await saveWelcomeVideo(newVideo);
+          status.textContent = 'Video posted successfully!';
+          await renderWelcomeVideosPage();
         } else {
           status.textContent = 'Recording discarded.';
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(500);
       startBtn.style.display = 'none';
       stopBtn.style.display = 'inline-block';
       if (previewBtn) previewBtn.style.display = 'none';
@@ -1378,34 +1526,33 @@ function renderWelcomeVideosPage() {
   });
 
   document.querySelectorAll('.comment-submit-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const videoId = btn.getAttribute('data-video-id');
       const input = document.querySelector(`.comment-input[data-video-id="${videoId}"]`);
       if (!input) return;
-      addVideoComment({ videoId, kind: 'welcome', text: input.value });
+      await addVideoComment({ videoId, kind: 'welcome', text: input.value });
       input.value = '';
-      renderWelcomeVideosPage();
+      await renderWelcomeVideosPage();
     });
   });
 
   document.querySelectorAll('.comment-input').forEach((input) => {
-    input.addEventListener('keydown', (event) => {
+    input.addEventListener('keydown', async (event) => {
       if (event.key === 'Enter') {
         const videoId = input.getAttribute('data-video-id');
-        addVideoComment({ videoId, kind: 'welcome', text: input.value });
+        await addVideoComment({ videoId, kind: 'welcome', text: input.value });
         input.value = '';
-        renderWelcomeVideosPage();
+        await renderWelcomeVideosPage();
       }
     });
   });
 
   document.querySelectorAll('.delete-video-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (window.confirm('Delete this video?')) {
         const videoId = btn.getAttribute('data-video-id');
-        const nextVideos = getWelcomeVideos().filter((v) => v.id !== videoId);
-        saveWelcomeVideos(nextVideos);
-        renderWelcomeVideosPage();
+        await deleteWelcomeVideo(videoId);
+        await renderWelcomeVideosPage();
       }
     });
   });
@@ -1425,8 +1572,8 @@ function openGayjesusBlogPage() {
   renderGayjesusBlogPage();
 }
 
-function renderGayjesusBlogPage() {
-  const videos = getGayjesusBlogVideos();
+async function renderGayjesusBlogPage() {
+  const videos = await getGayjesusBlogVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
   const topicOptions = getBlogTopics(videos);
   let recordingStream = null;
@@ -1511,8 +1658,20 @@ function renderGayjesusBlogPage() {
   videos.forEach((video) => {
     const videoElement = document.getElementById(`blog-video-${video.id}`);
     if (videoElement && video.blob) {
-      const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
-      videoElement.src = URL.createObjectURL(blob);
+      try {
+        let blobUrl;
+        if (video.blob instanceof Blob) {
+          blobUrl = URL.createObjectURL(video.blob);
+        } else if (Array.isArray(video.blob) || video.blob instanceof Uint8Array || video.blob.buffer) {
+          const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+          blobUrl = URL.createObjectURL(blob);
+        }
+        if (blobUrl) {
+          videoElement.src = blobUrl;
+        }
+      } catch (e) {
+        console.warn('Error displaying blog video:', e);
+      }
     }
   });
 
@@ -1673,14 +1832,18 @@ function renderGayjesusBlogPage() {
         recordedChunks = [];
         const options = getRecordingOptions();
         mediaRecorder = new MediaRecorder(recordingStream, options);
-        mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
         mediaRecorder.onstop = async () => {
-          const blob = new Blob(recordedChunks, { type: options.mimeType || 'video/webm' });
+          const mimeType = options.mimeType || 'video/webm';
+          const blob = new Blob(recordedChunks, { type: mimeType });
           recordingStream.getTracks().forEach((track) => track.stop());
           if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
           if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
           
-          // Clean up both mode resources
           if (startBtn.dataset.drawLoop) {
             clearInterval(parseInt(startBtn.dataset.drawLoop));
             delete startBtn.dataset.drawLoop;
@@ -1692,17 +1855,15 @@ function renderGayjesusBlogPage() {
           const title = titleInput.value.trim() || 'Blog video';
           const topic = topicInput.value.trim() || 'Updates';
           if (title) {
-            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode, comments: [] };
-            const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
-            saveGayjesusBlogVideos(nextVideos);
+            const newVideo = { id: crypto.randomUUID(), title, topic, blob: blob, timestamp: Date.now(), type: currentRecordingMode, comments: [], kind: 'blog' };
+            await saveGayjesusBlogVideo(newVideo);
             status.textContent = 'Video saved!';
             titleInput.value = '';
             topicInput.value = '';
-            setTimeout(() => renderGayjesusBlogPage(), 500);
+            await renderGayjesusBlogPage();
           }
         };
-        mediaRecorder.start();
+        mediaRecorder.start(500);
         startBtn.style.display = 'none';
         stopBtn.style.display = 'inline-block';
         cameraRadio.disabled = true;
@@ -1718,7 +1879,9 @@ function renderGayjesusBlogPage() {
     });
 
     stopBtn.addEventListener('click', () => {
-      mediaRecorder.stop();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
       startBtn.style.display = 'inline-block';
       stopBtn.style.display = 'none';
       cameraRadio.disabled = false;
@@ -1728,34 +1891,33 @@ function renderGayjesusBlogPage() {
 
     // Delete video buttons
     document.querySelectorAll('.blog-comment-submit-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const videoId = btn.getAttribute('data-video-id');
         const input = document.querySelector(`.blog-comment-input[data-video-id="${videoId}"]`);
         if (!input) return;
-        addVideoComment({ videoId, kind: 'blog', text: input.value });
+        await addVideoComment({ videoId, kind: 'blog', text: input.value });
         input.value = '';
-        renderGayjesusBlogPage();
+        await renderGayjesusBlogPage();
       });
     });
 
     document.querySelectorAll('.blog-comment-input').forEach((input) => {
-      input.addEventListener('keydown', (event) => {
+      input.addEventListener('keydown', async (event) => {
         if (event.key === 'Enter') {
           const videoId = input.getAttribute('data-video-id');
-          addVideoComment({ videoId, kind: 'blog', text: input.value });
+          await addVideoComment({ videoId, kind: 'blog', text: input.value });
           input.value = '';
-          renderGayjesusBlogPage();
+          await renderGayjesusBlogPage();
         }
       });
     });
 
     document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         if (window.confirm('Delete this video?')) {
           const videoId = btn.getAttribute('data-video-id');
-          const nextVideos = getGayjesusBlogVideos().filter((v) => v.id !== videoId);
-          saveGayjesusBlogVideos(nextVideos);
-          renderGayjesusBlogPage();
+          await deleteGayjesusBlogVideo(videoId);
+          await renderGayjesusBlogPage();
         }
       });
     });
