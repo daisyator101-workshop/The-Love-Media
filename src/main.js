@@ -2226,6 +2226,10 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
     const roomMateMenu = document.createElement('div');
     roomMateMenu.className = 'profile-menu hidden';
+    const openProfileFromName = () => {
+      roomMateMenu.classList.add('hidden');
+      openRoommateProfile(name);
+    };
     ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
       const action = document.createElement('button');
       action.className = 'profile-menu-item';
@@ -2238,8 +2242,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       }
       if (actionName === 'Profile') {
         action.addEventListener('click', () => {
-          roomMateMenu.classList.add('hidden');
-          openRoommateProfile(name);
+          openProfileFromName();
         });
       }
       if (actionName === 'Private message') {
@@ -2536,7 +2539,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     openPrivateMessage(friendToMessage);
   }
     roomMate.addEventListener('click', () => {
-      roomMateMenu.classList.toggle('hidden');
+      roomMateMenu.classList.add('hidden');
+      openRoommateProfile(name);
     });
     roomMateEntry.append(roomMate, roomMateMenu);
     roomMatesList.appendChild(roomMateEntry);
