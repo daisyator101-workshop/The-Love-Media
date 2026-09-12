@@ -734,6 +734,40 @@ button, input {
   color: #a5b4fc;
 }
 
+.group-camera-permission-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  max-width: 240px;
+}
+
+.group-camera-permission-card strong {
+  position: static;
+  background: none;
+  padding: 0;
+  font-size: 1rem;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.group-camera-permission-card p {
+  margin: 0 0 12px;
+  font-size: 0.78rem;
+  color: #d1d5db;
+  line-height: 1.35;
+}
+
+.permission-request-btn {
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
 .group-camera-screen-status {
   margin: 0;
   text-align: center;

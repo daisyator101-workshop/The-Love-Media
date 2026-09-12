@@ -2026,6 +2026,7 @@ function openGroupCameraScreen(cameraCount = 4) {
           <label for="group-screen-camera-count">Cameras</label>
           <input id="group-screen-camera-count" type="number" min="1" max="16" value="${activeCameraCount}" />
         </div>
+        <button class="secondary-btn" id="toggle-group-camera-btn" type="button">Enable Camera</button>
         <button class="secondary-btn" id="close-group-camera-btn">Exit</button>
       </div>
     </div>
@@ -2035,16 +2036,39 @@ function openGroupCameraScreen(cameraCount = 4) {
 
   document.getElementById('root').appendChild(cameraScreen);
   const cameraGrid = document.getElementById('group-camera-grid');
+  const toggleCameraBtn = document.getElementById('toggle-group-camera-btn');
+  const screenStatus = document.getElementById('group-camera-screen-status');
   let cameraStream = null;
 
   const localTile = document.createElement('div');
-  localTile.className = 'group-camera-tile';
-  localTile.innerHTML = `<video id="group-local-camera" autoplay muted playsinline></video><strong>${currentProfileName} (You)</strong>`;
+  localTile.className = 'group-camera-tile group-local-tile';
 
   const peerConnections = new Map();
   const peerTiles = new Map();
   const peerId = crypto.randomUUID();
   let signalingSocket = null;
+
+  const updateLocalTileDisplay = () => {
+    if (cameraStream) {
+      localTile.innerHTML = `<video id="group-local-camera" autoplay muted playsinline></video><strong>${currentProfileName} (You)</strong>`;
+      const videoEl = localTile.querySelector('#group-local-camera');
+      if (videoEl) videoEl.srcObject = cameraStream;
+      toggleCameraBtn.textContent = 'Turn off camera';
+    } else {
+      localTile.innerHTML = `
+        <div class="group-camera-permission-card">
+          <div class="placeholder-camera-icon">📷</div>
+          <strong>Camera Permission</strong>
+          <p>Click below to grant camera permission and share your video.</p>
+          <button class="primary-btn permission-request-btn" id="grant-camera-permission-btn" type="button">Grant Camera Permission</button>
+        </div>
+        <strong>${currentProfileName} (You)</strong>
+      `;
+      const grantBtn = localTile.querySelector('#grant-camera-permission-btn');
+      grantBtn?.addEventListener('click', requestCameraPermission);
+      toggleCameraBtn.textContent = 'Enable Camera';
+    }
+  };
 
   const updateGridDisplay = () => {
     cameraGrid.innerHTML = '';
@@ -2066,6 +2090,7 @@ function openGroupCameraScreen(cameraCount = 4) {
     }
   };
 
+  updateLocalTileDisplay();
   updateGridDisplay();
 
   const screenCountInput = document.getElementById('group-screen-camera-count');
@@ -2125,46 +2150,79 @@ function openGroupCameraScreen(cameraCount = 4) {
   };
 
   const startWebRtc = async (stream) => {
+    if (signalingSocket) return;
     const signalingUrl = webSocketBaseUrl;
-    signalingSocket = new WebSocket(signalingUrl);
-    signalingSocket.onopen = () => {
-      sendSignal({ type: 'auth', sessionToken: currentSessionToken });
-      sendSignal({ type: 'join', room: 'all-around-mayhem', peerId });
-    };
-    signalingSocket.onerror = () => {
-      document.getElementById('group-camera-screen-status').textContent = 'Unable to connect to the video server.';
-    };
-    signalingSocket.onmessage = async ({ data }) => {
-      const message = JSON.parse(data);
-      if (message.type === 'existing-peer') await connectToPeer(message.peerId, stream, true);
-      if (message.type === 'offer') {
-        const connection = peerConnections.get(message.from) || await connectToPeer(message.from, stream, false);
-        await connection.setRemoteDescription(message.description);
-        await connection.setLocalDescription(await connection.createAnswer());
-        sendSignal({ type: 'answer', to: message.from, description: connection.localDescription });
-      }
-      if (message.type === 'answer') await peerConnections.get(message.from)?.setRemoteDescription(message.description);
-      if (message.type === 'candidate') await peerConnections.get(message.from)?.addIceCandidate(message.candidate);
-      if (message.type === 'peer-left') removePeer(message.peerId);
-    };
+    try {
+      signalingSocket = new WebSocket(signalingUrl);
+      signalingSocket.onopen = () => {
+        sendSignal({ type: 'auth', sessionToken: currentSessionToken });
+        sendSignal({ type: 'join', room: 'all-around-mayhem', peerId });
+      };
+      signalingSocket.onerror = () => {
+        screenStatus.textContent = 'Unable to connect to the video server.';
+      };
+      signalingSocket.onmessage = async ({ data }) => {
+        const message = JSON.parse(data);
+        if (message.type === 'existing-peer') await connectToPeer(message.peerId, stream, true);
+        if (message.type === 'offer') {
+          const connection = peerConnections.get(message.from) || await connectToPeer(message.from, stream, false);
+          await connection.setRemoteDescription(message.description);
+          await connection.setLocalDescription(await connection.createAnswer());
+          sendSignal({ type: 'answer', to: message.from, description: connection.localDescription });
+        }
+        if (message.type === 'answer') await peerConnections.get(message.from)?.setRemoteDescription(message.description);
+        if (message.type === 'candidate') await peerConnections.get(message.from)?.addIceCandidate(message.candidate);
+        if (message.type === 'peer-left') removePeer(message.peerId);
+      };
+    } catch {
+      screenStatus.textContent = 'Unable to establish video connection.';
+    }
   };
 
-  if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-    document.getElementById('group-camera-screen-status').textContent = 'Webcam access is not available.';
-  } else {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-      .then((stream) => {
-        cameraStream = stream;
-        document.getElementById('group-local-camera').srcObject = stream;
-        startWebRtc(stream);
-      })
-      .catch(() => {
-        document.getElementById('group-camera-screen-status').textContent = 'Camera permission was not granted.';
-      });
+  async function requestCameraPermission() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      screenStatus.textContent = 'Webcam access is not supported by your browser.';
+      return;
+    }
+
+    screenStatus.textContent = 'Requesting camera permission...';
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      screenStatus.textContent = 'Camera active.';
+      updateLocalTileDisplay();
+      updateGridDisplay();
+      startWebRtc(cameraStream);
+    } catch (error) {
+      screenStatus.textContent = error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError'
+        ? 'Camera permission denied. Click "Grant Camera Permission" or allow camera access in your browser.'
+        : 'Could not access camera. Please check your camera connection.';
+      updateLocalTileDisplay();
+    }
   }
 
+  function stopCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
+    screenStatus.textContent = 'Camera turned off.';
+    updateLocalTileDisplay();
+    updateGridDisplay();
+  }
+
+  toggleCameraBtn.addEventListener('click', () => {
+    if (cameraStream) {
+      stopCamera();
+    } else {
+      requestCameraPermission();
+    }
+  });
+
+  // Request camera on entry
+  requestCameraPermission();
+
   document.getElementById('close-group-camera-btn').addEventListener('click', () => {
-    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+    stopCamera();
     signalingSocket?.close();
     peerConnections.forEach((connection) => connection.close());
     cameraScreen.remove();
