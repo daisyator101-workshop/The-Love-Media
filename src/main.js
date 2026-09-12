@@ -925,97 +925,245 @@ function openWelcomeVideosModal() {
 
 function openGayjesusBlogPage() {
   window.history.pushState({ screen: 'gayjesus-blog' }, '', `${window.location.pathname}#gayjesus-blog`);
-  openGayjesusBlogModal();
+  renderGayjesusBlogPage();
 }
 
-function openGayjesusBlogModal() {
-  const existingModal = document.getElementById('gayjesus-blog-modal');
-  if (existingModal) existingModal.remove();
-
+function renderGayjesusBlogPage() {
   const videos = getGayjesusBlogVideos();
   const isGayjesus = currentProfileName.toLowerCase() === 'gayjesus';
   const topicOptions = getBlogTopics(videos);
+  let recordingStream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
 
-  const modal = document.createElement('div');
-  modal.className = 'profile-editor-modal';
-  modal.id = 'gayjesus-blog-modal';
-  modal.innerHTML = `
-    <div class="profile-editor-card donation-card gayjesus-blog-card">
-      <p class="eyebrow">Gayjesus</p>
-      <h3>Blog & topic videos</h3>
-      <p>Create videos in separate topics and keep them apart from the welcome videos.</p>
-
-      <div class="church-feature-card">
-        <p class="panel-label">Church where I reside</p>
-        <h4>Phoenix Community Church UCC</h4>
-        <p>Progressive and inclusive Open and Affirming congregation in Kalamazoo, Michigan.</p>
-        <p class="church-feature-address">345 W. Michigan Ave., Kalamazoo, MI 49007</p>
-        <a class="small-btn church-feature-link" href="https://www.phoenixcommunitychurch.org/" target="_blank" rel="noopener noreferrer">Visit church website</a>
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="floating-hearts welcome-hearts" aria-hidden="true">
+        <span class="heart heart-1">♥</span>
+        <span class="heart heart-2">♥</span>
+        <span class="heart heart-3">♥</span>
+        <span class="heart heart-4">♥</span>
+        <span class="heart heart-5">♥</span>
+        <span class="heart heart-6">♥</span>
       </div>
+      <div class="welcome-card">
+        <div class="brand-row">
+          <p class="eyebrow">Gayjesus</p>
+          <span class="account-count">${accountCountLabel()}</span>
+        </div>
+        <h1>Blog & topic videos</h1>
+        <p>Church updates, lifestyle, advice, and community topics.</p>
 
-      ${isGayjesus ? `
-        <div class="form-group" style="margin-top: 16px;">
-          <label for="blog-video-title">Video title</label>
-          <input id="blog-video-title" type="text" placeholder="Topic video title" />
+        <div class="church-feature-card" style="margin-top: 16px; padding: 14px; border-radius: 14px; background: rgba(148, 102, 211, 0.15); border: 1px solid rgba(148, 102, 211, 0.3);">
+          <p style="margin: 0 0 6px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #d4a5ff;">Church where I reside</p>
+          <h4 style="margin: 0 0 4px;">Phoenix Community Church UCC</h4>
+          <p style="margin: 0 0 4px; color: #f0d6ff; font-size: 0.9rem;">Progressive and inclusive Open and Affirming congregation in Kalamazoo, Michigan.</p>
+          <p style="margin: 0 0 8px; color: #e9dff6; font-size: 0.85rem;">345 W. Michigan Ave., Kalamazoo, MI 49007</p>
+          <a style="display: inline-block; padding: 6px 12px; border-radius: 8px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; text-decoration: none; font-size: 0.75rem; font-weight: 700;" href="https://www.phoenixcommunitychurch.org/" target="_blank" rel="noopener noreferrer">Visit church website</a>
         </div>
-        <div class="form-group">
-          <label for="blog-custom-topic">Topic</label>
-          <input id="blog-custom-topic" type="text" placeholder="Example: Dating, Advice, Lifestyle" />
-        </div>
-        <div class="form-group">
-          <label for="blog-video-url">Video URL</label>
-          <input id="blog-video-url" type="url" placeholder="https://..." />
-        </div>
-        <div class="profile-editor-actions" style="margin-top: 12px;">
-          <button class="small-btn" id="add-blog-video-btn" type="button">Add topic video</button>
-          <button class="small-btn" id="start-blog-screen-share-btn" type="button">Start screen share</button>
-        </div>
-        <p class="private-message-status" id="blog-video-status" aria-live="polite"></p>
-      ` : `
-        <p class="private-message-status" aria-live="polite">Only Gayjesus can add blog videos.</p>
-      `}
 
-      <div class="friends-list" id="gayjesus-blog-list" style="margin-top: 18px;">
-        ${renderBlogTopicList(videos)}
-      </div>
+        ${isGayjesus ? `
+          <div id="blog-recording-section" style="margin-top: 20px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
+            <div id="blog-recording-preview" style="display: none; margin-bottom: 16px;">
+              <video id="blog-camera-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+            </div>
+            <div id="blog-screen-share-preview" style="display: none; margin-bottom: 16px;">
+              <video id="blog-screen-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+            </div>
+            <div class="form-group">
+              <label for="blog-video-title">Video title</label>
+              <input id="blog-video-title" type="text" placeholder="Topic video title" />
+            </div>
+            <div class="form-group">
+              <label for="blog-custom-topic">Topic</label>
+              <input id="blog-custom-topic" type="text" placeholder="Example: Dating, Advice, Lifestyle" />
+            </div>
+            <div class="profile-editor-actions">
+              <button class="small-btn" id="start-blog-recording-btn" type="button">Record camera</button>
+              <button class="small-btn" id="stop-blog-recording-btn" type="button" style="display: none;">Stop recording</button>
+              <button class="small-btn" id="start-blog-screen-share-btn" type="button">Share screen</button>
+              <button class="small-btn" id="stop-blog-screen-share-btn" type="button" style="display: none;">Stop sharing</button>
+            </div>
+            <p class="private-message-status" id="blog-recording-status" aria-live="polite"></p>
+          </div>
+        ` : ''}
 
-      <div class="profile-editor-actions" style="margin-top: 18px;">
-        <button class="secondary-btn" id="close-gayjesus-blog-btn" type="button">Close</button>
+        <div style="margin-top: 20px;">
+          <h3>Blog videos by topic</h3>
+          <div class="friends-list" id="gayjesus-blog-list">
+            ${renderBlogTopicListWithDelete(videos, isGayjesus)}
+          </div>
+        </div>
+
+        <div class="profile-editor-actions" style="margin-top: 20px;">
+          <button class="secondary-btn" id="back-from-blog-btn" type="button">Back</button>
+        </div>
       </div>
     </div>
   `;
 
-  document.getElementById('root').appendChild(modal);
+  // Load videos into video elements
+  videos.forEach((video) => {
+    const videoElement = document.getElementById(\`blog-video-\${video.id}\`);
+    if (videoElement && video.blob) {
+      const blob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+      videoElement.src = URL.createObjectURL(blob);
+    }
+  });
 
+  // Setup event listeners
   if (isGayjesus) {
     const titleInput = document.getElementById('blog-video-title');
-    const customTopicInput = document.getElementById('blog-custom-topic');
-    const urlInput = document.getElementById('blog-video-url');
-    const status = document.getElementById('blog-video-status');
+    const topicInput = document.getElementById('blog-custom-topic');
+    const startBtn = document.getElementById('start-blog-recording-btn');
+    const stopBtn = document.getElementById('stop-blog-recording-btn');
+    const startScreenBtn = document.getElementById('start-blog-screen-share-btn');
+    const stopScreenBtn = document.getElementById('stop-blog-screen-share-btn');
+    const status = document.getElementById('blog-recording-status');
+    const previewDiv = document.getElementById('blog-recording-preview');
+    const cameraPreview = document.getElementById('blog-camera-preview');
+    const screenPreviewDiv = document.getElementById('blog-screen-share-preview');
+    const screenPreview = document.getElementById('blog-screen-preview');
+    let screenRecordingStream = null;
+    let screenMediaRecorder = null;
+    let screenRecordedChunks = [];
 
-    document.getElementById('add-blog-video-btn').addEventListener('click', () => {
-      const title = titleInput.value.trim() || 'Blog video';
-      const topic = customTopicInput.value.trim() || 'Updates';
-      const url = urlInput.value.trim();
-
-      if (!url) {
-        status.textContent = 'Add a valid video URL.';
-        return;
+    // Camera recording
+    startBtn.addEventListener('click', async () => {
+      try {
+        recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        cameraPreview.srcObject = recordingStream;
+        previewDiv.style.display = 'block';
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(recordingStream);
+        mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          recordingStream.getTracks().forEach((track) => track.stop());
+          previewDiv.style.display = 'none';
+          status.textContent = 'Video recorded! Add a title and topic to save.';
+          
+          const title = titleInput.value.trim() || 'Blog video';
+          const topic = topicInput.value.trim() || 'Updates';
+          if (title) {
+            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
+            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: 'camera' };
+            const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
+            saveGayjesusBlogVideos(nextVideos);
+            status.textContent = 'Video saved!';
+            titleInput.value = '';
+            topicInput.value = '';
+            setTimeout(() => renderGayjesusBlogPage(), 500);
+          }
+        };
+        mediaRecorder.start();
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        status.textContent = 'Recording...';
+      } catch (error) {
+        status.textContent = 'Camera access denied or not available.';
       }
-
-      const nextVideos = [{ id: crypto.randomUUID(), title, topic, url }, ...getGayjesusBlogVideos()];
-      saveGayjesusBlogVideos(nextVideos);
-      status.textContent = 'Topic video added.';
-      titleInput.value = '';
-      customTopicInput.value = '';
-      urlInput.value = '';
-      const list = document.getElementById('gayjesus-blog-list');
-      list.innerHTML = renderBlogTopicList(nextVideos);
     });
-    document.getElementById('start-blog-screen-share-btn').addEventListener('click', () => openWelcomeScreenShare('Gayjesus blog'));
+
+    stopBtn.addEventListener('click', () => {
+      mediaRecorder.stop();
+      startBtn.style.display = 'inline-block';
+      stopBtn.style.display = 'none';
+    });
+
+    // Screen share
+    startScreenBtn.addEventListener('click', async () => {
+      try {
+        screenRecordingStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { cursor: 'always' }, 
+          audio: true 
+        });
+        screenPreview.srcObject = screenRecordingStream;
+        screenPreviewDiv.style.display = 'block';
+        screenRecordedChunks = [];
+        screenMediaRecorder = new MediaRecorder(screenRecordingStream);
+        screenMediaRecorder.ondataavailable = (event) => screenRecordedChunks.push(event.data);
+        screenMediaRecorder.onstop = async () => {
+          const blob = new Blob(screenRecordedChunks, { type: 'video/webm' });
+          screenRecordingStream.getTracks().forEach((track) => track.stop());
+          screenPreviewDiv.style.display = 'none';
+          status.textContent = 'Screen recorded! Add a title and topic to save.';
+          
+          const title = titleInput.value.trim() || 'Screen recording';
+          const topic = topicInput.value.trim() || 'Updates';
+          if (title) {
+            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
+            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: 'screen' };
+            const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
+            saveGayjesusBlogVideos(nextVideos);
+            status.textContent = 'Screen recording saved!';
+            titleInput.value = '';
+            topicInput.value = '';
+            setTimeout(() => renderGayjesusBlogPage(), 500);
+          }
+        };
+        screenMediaRecorder.start();
+        startScreenBtn.style.display = 'none';
+        stopScreenBtn.style.display = 'inline-block';
+        status.textContent = 'Sharing your screen...';
+      } catch (error) {
+        status.textContent = 'Screen share cancelled or not available.';
+      }
+    });
+
+    stopScreenBtn.addEventListener('click', () => {
+      screenMediaRecorder.stop();
+      startScreenBtn.style.display = 'inline-block';
+      stopScreenBtn.style.display = 'none';
+    });
+
+    // Delete video buttons
+    document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (window.confirm('Delete this video?')) {
+          const videoId = btn.getAttribute('data-video-id');
+          const nextVideos = getGayjesusBlogVideos().filter((v) => v.id !== videoId);
+          saveGayjesusBlogVideos(nextVideos);
+          renderGayjesusBlogPage();
+        }
+      });
+    });
   }
 
-  document.getElementById('close-gayjesus-blog-btn').addEventListener('click', () => window.history.back());
+  document.getElementById('back-from-blog-btn').addEventListener('click', () => {
+    window.history.back();
+  });
+}
+
+function renderBlogTopicListWithDelete(videos, isGayjesus) {
+  const topics = getBlogTopics(videos);
+
+  if (!videos.length) {
+    return '<p class="private-message-status">No blog videos yet.</p>';
+  }
+
+  return topics.map((topic) => {
+    const topicVideos = videos.filter((video) => (video.topic || 'Welcome') === topic);
+
+    return \`
+      <div class="private-message-item" style="display:block; margin-bottom:18px;">
+        <strong style="display:block; margin-bottom:8px;">\${topic}</strong>
+        \${topicVideos.map((video) => \`
+          <div style="margin-bottom:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong>\${video.title || 'Blog video'}</strong>
+              \${isGayjesus ? \`<button class="delete-blog-video-btn" data-video-id="\${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>\` : ''}
+            </div>
+            <video id="blog-video-\${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
+          </div>
+        \`).join('')}
+      </div>
+    \`;
+  }).join('');
+}
+
+function openGayjesusBlogModal() {
+  renderGayjesusBlogPage();
 }
 
 function openWelcomePage() {
@@ -2492,6 +2640,10 @@ function renderInitialRoute() {
     renderWelcomeVideosPage();
     return;
   }
+  if (hash === '#gayjesus-blog') {
+    renderGayjesusBlogPage();
+    return;
+  }
   renderLoginPage();
 }
 
@@ -2513,8 +2665,8 @@ const handleAuthHistoryBack = (event) => {
     openFriendsConnect();
     return;
   }
-  if (window.location.hash === '#gayjesus-blog' && !document.querySelector('#gayjesus-blog-modal')) {
-    openGayjesusBlogModal();
+  if (window.location.hash === '#gayjesus-blog' && app.querySelector('.welcome-card h1')?.textContent !== 'Blog & topic videos') {
+    renderGayjesusBlogPage();
     return;
   }
   if (window.location.hash === '#welcome-videos' && app.querySelector('.welcome-card h1')?.textContent !== 'Welcome videos') {
@@ -2523,9 +2675,6 @@ const handleAuthHistoryBack = (event) => {
   }
   if (window.location.hash !== '#friends-connect' && document.querySelector('#friends-connect-modal')) {
     document.querySelector('#friends-connect-modal').remove();
-  }
-  if (window.location.hash !== '#gayjesus-blog' && document.querySelector('#gayjesus-blog-modal')) {
-    document.querySelector('#gayjesus-blog-modal').remove();
   }
   if (roomRoute && !document.querySelector('.room-shell')) {
     const roomName = roomNames.find((name) => roomIdForName(name) === roomRoute[1]);
