@@ -758,14 +758,19 @@ function renderWelcomeVideosPage() {
             <div id="recording-preview" style="display: none; margin-bottom: 16px;">
               <video id="camera-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
             </div>
-            <div id="screen-share-preview" style="display: none; margin-bottom: 16px;">
-              <video id="screen-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
+            <div style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="recording-mode-camera" type="radio" name="recording-mode" value="camera" checked style="cursor: pointer;" />
+                <span>Record camera</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
+                <input id="recording-mode-screen" type="radio" name="recording-mode" value="screen" style="cursor: pointer;" />
+                <span>Record screen</span>
+              </label>
             </div>
             <div class="profile-editor-actions">
-              <button class="small-btn" id="start-recording-btn" type="button">Record camera</button>
+              <button class="small-btn" id="start-recording-btn" type="button">Start recording</button>
               <button class="small-btn" id="stop-recording-btn" type="button" style="display: none;">Stop recording</button>
-              <button class="small-btn" id="start-screen-share-btn" type="button">Share screen</button>
-              <button class="small-btn" id="stop-screen-share-btn" type="button" style="display: none;">Stop sharing</button>
             </div>
             <p class="private-message-status" id="recording-status" aria-live="polite"></p>
           </div>
@@ -809,10 +814,28 @@ function renderWelcomeVideosPage() {
     const status = document.getElementById('recording-status');
     const previewDiv = document.getElementById('recording-preview');
     const cameraPreview = document.getElementById('camera-preview');
+    const cameraRadio = document.getElementById('recording-mode-camera');
+    const screenRadio = document.getElementById('recording-mode-screen');
+    let currentRecordingMode = 'camera';
+
+    cameraRadio.addEventListener('change', () => {
+      currentRecordingMode = 'camera';
+      previewDiv.style.display = 'none';
+    });
+
+    screenRadio.addEventListener('change', () => {
+      currentRecordingMode = 'screen';
+      previewDiv.style.display = 'none';
+    });
 
     startBtn.addEventListener('click', async () => {
       try {
-        recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (currentRecordingMode === 'camera') {
+          recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } else {
+          recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        }
+        
         cameraPreview.srcObject = recordingStream;
         previewDiv.style.display = 'block';
         recordedChunks = [];
@@ -824,11 +847,10 @@ function renderWelcomeVideosPage() {
           previewDiv.style.display = 'none';
           status.textContent = 'Video recorded! Add a title to save.';
           
-          // Prompt for title and save
           const title = window.prompt('Video title:', 'Welcome video');
           if (title) {
             const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now() };
+            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode };
             const nextVideos = [newVideo, ...getWelcomeVideos()];
             saveWelcomeVideos(nextVideos);
             status.textContent = 'Video saved!';
@@ -838,9 +860,11 @@ function renderWelcomeVideosPage() {
         mediaRecorder.start();
         startBtn.style.display = 'none';
         stopBtn.style.display = 'inline-block';
+        cameraRadio.disabled = true;
+        screenRadio.disabled = true;
         status.textContent = 'Recording...';
       } catch (error) {
-        status.textContent = 'Camera access denied or not available.';
+        status.textContent = currentRecordingMode === 'camera' ? 'Camera access denied or not available.' : 'Screen share cancelled or not available.';
       }
     });
 
@@ -848,57 +872,8 @@ function renderWelcomeVideosPage() {
       mediaRecorder.stop();
       startBtn.style.display = 'inline-block';
       stopBtn.style.display = 'none';
-    });
-
-    // Screen share functionality
-    const startScreenShareBtn = document.getElementById('start-screen-share-btn');
-    const stopScreenShareBtn = document.getElementById('stop-screen-share-btn');
-    const screenPreviewDiv = document.getElementById('screen-share-preview');
-    const screenPreview = document.getElementById('screen-preview');
-    let screenRecordingStream = null;
-    let screenMediaRecorder = null;
-    let screenRecordedChunks = [];
-
-    startScreenShareBtn.addEventListener('click', async () => {
-      try {
-        screenRecordingStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: { cursor: 'always' }, 
-          audio: true 
-        });
-        screenPreview.srcObject = screenRecordingStream;
-        screenPreviewDiv.style.display = 'block';
-        screenRecordedChunks = [];
-        screenMediaRecorder = new MediaRecorder(screenRecordingStream);
-        screenMediaRecorder.ondataavailable = (event) => screenRecordedChunks.push(event.data);
-        screenMediaRecorder.onstop = async () => {
-          const blob = new Blob(screenRecordedChunks, { type: 'video/webm' });
-          screenRecordingStream.getTracks().forEach((track) => track.stop());
-          screenPreviewDiv.style.display = 'none';
-          status.textContent = 'Screen recorded! Add a title to save.';
-          
-          const title = window.prompt('Screen share title:', 'Screen recording');
-          if (title) {
-            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, blob: videoArray, timestamp: Date.now(), type: 'screen' };
-            const nextVideos = [newVideo, ...getWelcomeVideos()];
-            saveWelcomeVideos(nextVideos);
-            status.textContent = 'Screen recording saved!';
-            setTimeout(() => renderWelcomeVideosPage(), 500);
-          }
-        };
-        screenMediaRecorder.start();
-        startScreenShareBtn.style.display = 'none';
-        stopScreenShareBtn.style.display = 'inline-block';
-        status.textContent = 'Sharing your screen...';
-      } catch (error) {
-        status.textContent = 'Screen share cancelled or not available.';
-      }
-    });
-
-    stopScreenShareBtn.addEventListener('click', () => {
-      screenMediaRecorder.stop();
-      startScreenShareBtn.style.display = 'inline-block';
-      stopScreenShareBtn.style.display = 'none';
+      cameraRadio.disabled = false;
+      screenRadio.disabled = false;
     });
 
     // Delete video buttons
@@ -967,9 +942,6 @@ function renderGayjesusBlogPage() {
             <div id="blog-recording-preview" style="display: none; margin-bottom: 16px;">
               <video id="blog-camera-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
             </div>
-            <div id="blog-screen-share-preview" style="display: none; margin-bottom: 16px;">
-              <video id="blog-screen-preview" autoplay playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
-            </div>
             <div class="form-group">
               <label for="blog-video-title">Video title</label>
               <input id="blog-video-title" type="text" placeholder="Topic video title" />
@@ -978,11 +950,19 @@ function renderGayjesusBlogPage() {
               <label for="blog-custom-topic">Topic</label>
               <input id="blog-custom-topic" type="text" placeholder="Example: Dating, Advice, Lifestyle" />
             </div>
+            <div style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="blog-recording-mode-camera" type="radio" name="blog-recording-mode" value="camera" checked style="cursor: pointer;" />
+                <span>Record camera</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
+                <input id="blog-recording-mode-screen" type="radio" name="blog-recording-mode" value="screen" style="cursor: pointer;" />
+                <span>Record screen</span>
+              </label>
+            </div>
             <div class="profile-editor-actions">
-              <button class="small-btn" id="start-blog-recording-btn" type="button">Record camera</button>
+              <button class="small-btn" id="start-blog-recording-btn" type="button">Start recording</button>
               <button class="small-btn" id="stop-blog-recording-btn" type="button" style="display: none;">Stop recording</button>
-              <button class="small-btn" id="start-blog-screen-share-btn" type="button">Share screen</button>
-              <button class="small-btn" id="stop-blog-screen-share-btn" type="button" style="display: none;">Stop sharing</button>
             </div>
             <p class="private-message-status" id="blog-recording-status" aria-live="polite"></p>
           </div>
@@ -1017,21 +997,31 @@ function renderGayjesusBlogPage() {
     const topicInput = document.getElementById('blog-custom-topic');
     const startBtn = document.getElementById('start-blog-recording-btn');
     const stopBtn = document.getElementById('stop-blog-recording-btn');
-    const startScreenBtn = document.getElementById('start-blog-screen-share-btn');
-    const stopScreenBtn = document.getElementById('stop-blog-screen-share-btn');
     const status = document.getElementById('blog-recording-status');
     const previewDiv = document.getElementById('blog-recording-preview');
     const cameraPreview = document.getElementById('blog-camera-preview');
-    const screenPreviewDiv = document.getElementById('blog-screen-share-preview');
-    const screenPreview = document.getElementById('blog-screen-preview');
-    let screenRecordingStream = null;
-    let screenMediaRecorder = null;
-    let screenRecordedChunks = [];
+    const cameraRadio = document.getElementById('blog-recording-mode-camera');
+    const screenRadio = document.getElementById('blog-recording-mode-screen');
+    let currentRecordingMode = 'camera';
 
-    // Camera recording
+    cameraRadio.addEventListener('change', () => {
+      currentRecordingMode = 'camera';
+      previewDiv.style.display = 'none';
+    });
+
+    screenRadio.addEventListener('change', () => {
+      currentRecordingMode = 'screen';
+      previewDiv.style.display = 'none';
+    });
+
     startBtn.addEventListener('click', async () => {
       try {
-        recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (currentRecordingMode === 'camera') {
+          recordingStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } else {
+          recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+        }
+        
         cameraPreview.srcObject = recordingStream;
         previewDiv.style.display = 'block';
         recordedChunks = [];
@@ -1047,7 +1037,7 @@ function renderGayjesusBlogPage() {
           const topic = topicInput.value.trim() || 'Updates';
           if (title) {
             const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: 'camera' };
+            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: currentRecordingMode };
             const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
             saveGayjesusBlogVideos(nextVideos);
             status.textContent = 'Video saved!';
@@ -1059,9 +1049,11 @@ function renderGayjesusBlogPage() {
         mediaRecorder.start();
         startBtn.style.display = 'none';
         stopBtn.style.display = 'inline-block';
+        cameraRadio.disabled = true;
+        screenRadio.disabled = true;
         status.textContent = 'Recording...';
       } catch (error) {
-        status.textContent = 'Camera access denied or not available.';
+        status.textContent = currentRecordingMode === 'camera' ? 'Camera access denied or not available.' : 'Screen share cancelled or not available.';
       }
     });
 
@@ -1069,52 +1061,8 @@ function renderGayjesusBlogPage() {
       mediaRecorder.stop();
       startBtn.style.display = 'inline-block';
       stopBtn.style.display = 'none';
-    });
-
-    // Screen share
-    startScreenBtn.addEventListener('click', async () => {
-      try {
-        screenRecordingStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: { cursor: 'always' }, 
-          audio: true 
-        });
-        screenPreview.srcObject = screenRecordingStream;
-        screenPreviewDiv.style.display = 'block';
-        screenRecordedChunks = [];
-        screenMediaRecorder = new MediaRecorder(screenRecordingStream);
-        screenMediaRecorder.ondataavailable = (event) => screenRecordedChunks.push(event.data);
-        screenMediaRecorder.onstop = async () => {
-          const blob = new Blob(screenRecordedChunks, { type: 'video/webm' });
-          screenRecordingStream.getTracks().forEach((track) => track.stop());
-          screenPreviewDiv.style.display = 'none';
-          status.textContent = 'Screen recorded! Add a title and topic to save.';
-          
-          const title = titleInput.value.trim() || 'Screen recording';
-          const topic = topicInput.value.trim() || 'Updates';
-          if (title) {
-            const videoArray = Array.from(new Uint8Array(await blob.arrayBuffer()));
-            const newVideo = { id: crypto.randomUUID(), title, topic, blob: videoArray, timestamp: Date.now(), type: 'screen' };
-            const nextVideos = [newVideo, ...getGayjesusBlogVideos()];
-            saveGayjesusBlogVideos(nextVideos);
-            status.textContent = 'Screen recording saved!';
-            titleInput.value = '';
-            topicInput.value = '';
-            setTimeout(() => renderGayjesusBlogPage(), 500);
-          }
-        };
-        screenMediaRecorder.start();
-        startScreenBtn.style.display = 'none';
-        stopScreenBtn.style.display = 'inline-block';
-        status.textContent = 'Sharing your screen...';
-      } catch (error) {
-        status.textContent = 'Screen share cancelled or not available.';
-      }
-    });
-
-    stopScreenBtn.addEventListener('click', () => {
-      screenMediaRecorder.stop();
-      startScreenBtn.style.display = 'inline-block';
-      stopScreenBtn.style.display = 'none';
+      cameraRadio.disabled = false;
+      screenRadio.disabled = false;
     });
 
     // Delete video buttons
