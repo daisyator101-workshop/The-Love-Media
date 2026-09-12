@@ -364,7 +364,7 @@ function renderLoginPage() {
           <span>Remember my password in my browser</span>
         </label>
 
-        <button class="primary-btn" id="login-btn">Log in</button>
+        <button class="primary-btn" id="login-btn" type="button">Log in</button>
         <p class="form-status" id="login-status" aria-live="polite"></p>
 
         <div class="form-footer">
@@ -395,10 +395,15 @@ function renderLoginPage() {
     const codename = codenameInput.value.trim();
     const password = passwordInput.value;
     const status = document.getElementById('login-status');
+    const loginButton = document.getElementById('login-btn');
     if (!codename || !password) {
       status.textContent = 'Enter your codename and password.';
       return;
     }
+    loginButton.disabled = true;
+    loginButton.classList.add('is-loading');
+    loginButton.setAttribute('aria-busy', 'true');
+    loginButton.textContent = 'Signing in...';
     try {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
@@ -422,6 +427,14 @@ function renderLoginPage() {
         openWelcomePage();
       } else {
         status.textContent = error.message;
+      }
+    } finally {
+      const currentLoginButton = document.getElementById('login-btn');
+      if (currentLoginButton) {
+        currentLoginButton.disabled = false;
+        currentLoginButton.classList.remove('is-loading');
+        currentLoginButton.removeAttribute('aria-busy');
+        currentLoginButton.textContent = 'Log in';
       }
     }
   });

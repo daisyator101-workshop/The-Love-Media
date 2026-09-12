@@ -440,6 +440,28 @@ button, input {
   opacity: 0.95;
 }
 
+.primary-btn.is-loading {
+  cursor: wait;
+  opacity: 0.88;
+}
+
+.primary-btn.is-loading::after {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.65em;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: white;
+  border-radius: 50%;
+  vertical-align: -0.12em;
+  animation: button-spin 0.7s linear infinite;
+}
+
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
+
 .modal {
   position: fixed;
   inset: 0;
