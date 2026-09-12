@@ -193,12 +193,37 @@ function addPrivateMailMessage(friend, sender, text, options = {}) {
   savePrivateMail();
 }
 
+let serverAccountCount = null;
+
 function accountCountLabel() {
   return 'Server accounts';
 }
 
 function accountCount() {
-  return Math.max(1, accounts.length);
+  if (typeof serverAccountCount === 'number') {
+    return serverAccountCount;
+  }
+  return accounts.length;
+}
+
+async function fetchServerAccountCount() {
+  try {
+    const res = await fetch(`${apiBaseUrl}/api/accounts-count`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.count === 'number') {
+        serverAccountCount = data.count;
+        document.querySelectorAll('.hero-metrics .hero-metric-members, .hero-metrics div:first-child strong').forEach((el) => {
+          el.textContent = serverAccountCount;
+        });
+      }
+    }
+  } catch {
+  }
 }
 
 function getRememberedCredentials() {
@@ -319,7 +344,7 @@ function renderLoginPage() {
         <p>Private rooms, intimate hangouts, and welcoming LGBTQ+ spaces built for connection.</p>
         <div class="hero-metrics">
           <div>
-            <strong>${accountCount()}</strong>
+            <strong class="hero-metric-members">${accountCount()}</strong>
             <span>Member</span>
           </div>
           <div>
@@ -3207,6 +3232,7 @@ function renderInitialRoute() {
 }
 
 migrateLocalAccounts();
+fetchServerAccountCount();
 renderInitialRoute();
 
 const handleAuthHistoryBack = (event) => {

@@ -323,6 +323,12 @@ const httpServer = createServer(async (request, response) => {
       return;
     }
 
+    if (request.url === '/api/accounts-count') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ count: accounts.length }));
+      return;
+    }
+
     if (request.url === '/api/accounts') {
       const codename = String(body.codename || '').trim();
       const resetKey = String(body.resetKey || '').trim();
