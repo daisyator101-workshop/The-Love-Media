@@ -2599,6 +2599,11 @@ const handleAuthHistoryBack = (event) => {
     renderNextPage();
     return;
   }
+  if (!window.location.hash && !document.querySelector('.login-card')) {
+    currentSessionToken = '';
+    renderLoginPage();
+    return;
+  }
   if (event.state?.screen === 'login' || authHeading === 'Forgot password?' || authHeading === 'Create an account') {
     renderLoginPage();
   }
