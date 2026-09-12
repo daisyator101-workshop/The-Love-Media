@@ -200,10 +200,12 @@ function accountCountLabel() {
 }
 
 function accountCount() {
+  accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
+  const localCodenames = new Set(accounts.map((a) => (typeof a === 'string' ? a : a?.codename)).filter(Boolean));
   if (typeof serverAccountCount === 'number') {
-    return serverAccountCount;
+    return Math.max(serverAccountCount, localCodenames.size, 1);
   }
-  return accounts.length;
+  return Math.max(localCodenames.size, 1);
 }
 
 async function fetchServerAccountCount() {
@@ -217,8 +219,9 @@ async function fetchServerAccountCount() {
       const data = await res.json();
       if (typeof data.count === 'number') {
         serverAccountCount = data.count;
+        const totalMembers = accountCount();
         document.querySelectorAll('.hero-metrics .hero-metric-members, .hero-metrics div:first-child strong').forEach((el) => {
-          el.textContent = serverAccountCount;
+          el.textContent = totalMembers;
         });
       }
     }
