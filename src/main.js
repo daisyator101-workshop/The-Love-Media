@@ -2445,8 +2445,15 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
             <button class="secondary-btn" id="private-camera-btn" type="button">Camera</button>
             <span class="private-camera-status" id="private-camera-status" aria-live="polite"></span>
             ${showCameraPreview ? `
-              <div class="camera-preview hidden" id="private-camera-preview-wrap">
-                <video id="private-camera-preview" autoplay muted playsinline></video>
+              <div class="private-camera-feeds hidden" id="private-camera-preview-wrap">
+                <div class="private-video-card remote-video-card hidden" id="private-remote-video-card">
+                  <video id="private-remote-video" autoplay playsinline></video>
+                  <span class="private-video-label">${name}</span>
+                </div>
+                <div class="private-video-card local-video-card hidden" id="private-local-video-card">
+                  <video id="private-camera-preview" autoplay muted playsinline></video>
+                  <span class="private-video-label">You</span>
+                </div>
               </div>
             ` : ''}
           </div>
@@ -2526,9 +2533,17 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     window.addEventListener('resize', clampCardPosition, { once: true });
     setupEmojiPicker('private-emoji-btn', 'private-emoji-picker', 'private-message-input');
     let cameraStream = null;
+    let peerConnection = null;
+    let signalingSocket = null;
+    const peerId = crypto.randomUUID();
+    const pmRoom = 'pm-' + [currentProfileName, name].map((s) => encodeURIComponent(String(s || '').toLowerCase().trim())).sort().join('-');
+
     const cameraButton = document.getElementById('private-camera-btn');
     const cameraPreviewWrap = document.getElementById('private-camera-preview-wrap');
-    const cameraPreview = document.getElementById('private-camera-preview');
+    const localVideoCard = document.getElementById('private-local-video-card');
+    const localVideo = document.getElementById('private-camera-preview');
+    const remoteVideoCard = document.getElementById('private-remote-video-card');
+    const remoteVideo = document.getElementById('private-remote-video');
     const cameraStatus = document.getElementById('private-camera-status');
     const messageThread = document.getElementById('private-message-thread');
     const isFriendOnline = new Set(['Room bot', currentProfileName]).has(name);
@@ -2560,17 +2575,118 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       addPrivateMessage(sender, message, ownMessage);
     };
 
+    const sendSignal = (message) => {
+      if (signalingSocket?.readyState === WebSocket.OPEN) signalingSocket.send(JSON.stringify(message));
+    };
+
+    const removePeerConnection = () => {
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      if (remoteVideo) remoteVideo.srcObject = null;
+      if (remoteVideoCard) remoteVideoCard.classList.add('hidden');
+    };
+
+    const connectToPeer = async (remotePeerId, stream, shouldOffer) => {
+      removePeerConnection();
+      peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      if (stream) {
+        stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+      }
+      peerConnection.onicecandidate = ({ candidate }) => {
+        if (candidate) sendSignal({ type: 'candidate', to: remotePeerId, candidate });
+      };
+      peerConnection.ontrack = ({ streams }) => {
+        if (remoteVideo && streams[0]) {
+          remoteVideo.srcObject = streams[0];
+          if (remoteVideoCard) remoteVideoCard.classList.remove('hidden');
+          if (cameraPreviewWrap) cameraPreviewWrap.classList.remove('hidden');
+          cameraStatus.textContent = `Connected with ${name}.`;
+        }
+      };
+      peerConnection.onconnectionstatechange = () => {
+        if (['failed', 'closed', 'disconnected'].includes(peerConnection?.connectionState)) {
+          if (remoteVideo) remoteVideo.srcObject = null;
+          if (remoteVideoCard) remoteVideoCard.classList.add('hidden');
+          cameraStatus.textContent = `${name} disconnected from camera.`;
+        }
+      };
+      if (shouldOffer) {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        sendSignal({ type: 'offer', to: remotePeerId, description: peerConnection.localDescription });
+      }
+      return peerConnection;
+    };
+
+    const startWebRtc = async (stream) => {
+      if (signalingSocket) return;
+      const signalingUrl = webSocketBaseUrl;
+      try {
+        signalingSocket = new WebSocket(signalingUrl);
+        signalingSocket.onopen = () => {
+          sendSignal({ type: 'auth', sessionToken: currentSessionToken });
+          sendSignal({ type: 'join', room: pmRoom, peerId });
+        };
+        signalingSocket.onerror = () => {
+          cameraStatus.textContent = 'Unable to connect to video server.';
+        };
+        signalingSocket.onmessage = async ({ data }) => {
+          const message = JSON.parse(data);
+          if (message.type === 'existing-peer') {
+            await connectToPeer(message.peerId, stream, true);
+          }
+          if (message.type === 'offer') {
+            const connection = peerConnection || await connectToPeer(message.from, stream, false);
+            await connection.setRemoteDescription(message.description);
+            await connection.setLocalDescription(await connection.createAnswer());
+            sendSignal({ type: 'answer', to: message.from, description: connection.localDescription });
+          }
+          if (message.type === 'answer') {
+            await peerConnection?.setRemoteDescription(message.description);
+          }
+          if (message.type === 'candidate') {
+            await peerConnection?.addIceCandidate(message.candidate);
+          }
+          if (message.type === 'peer-left') {
+            removePeerConnection();
+            cameraStatus.textContent = `${name} left video.`;
+          }
+        };
+      } catch {
+        cameraStatus.textContent = 'Unable to establish video connection.';
+      }
+    };
+
+    const stopCamera = () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+      }
+      removePeerConnection();
+      if (signalingSocket) {
+        signalingSocket.close();
+        signalingSocket = null;
+      }
+      if (localVideo) localVideo.srcObject = null;
+      if (localVideoCard) localVideoCard.classList.add('hidden');
+      if (remoteVideo) remoteVideo.srcObject = null;
+      if (remoteVideoCard) remoteVideoCard.classList.add('hidden');
+      if (cameraPreviewWrap) cameraPreviewWrap.classList.add('hidden');
+      cameraButton.textContent = 'Camera';
+      cameraStatus.textContent = '';
+    };
+
     cameraButton.addEventListener('click', async () => {
       if (!showCameraPreview) {
         cameraStatus.textContent = 'Camera attached to this message.';
         return;
       }
       if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-        cameraStream = null;
-        cameraPreview.srcObject = null;
-        cameraPreviewWrap.classList.add('hidden');
-        cameraButton.textContent = 'Camera';
+        stopCamera();
         return;
       }
 
@@ -2581,10 +2697,12 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        cameraPreview.srcObject = cameraStream;
-        cameraPreviewWrap.classList.remove('hidden');
+        if (localVideo) localVideo.srcObject = cameraStream;
+        if (localVideoCard) localVideoCard.classList.remove('hidden');
+        if (cameraPreviewWrap) cameraPreviewWrap.classList.remove('hidden');
         cameraButton.textContent = 'Turn off camera';
-        cameraStatus.textContent = '';
+        cameraStatus.textContent = `Camera active. Waiting for ${name}...`;
+        startWebRtc(cameraStream);
       } catch (error) {
         cameraStatus.textContent = 'Camera permission was not granted.';
       }
@@ -2618,7 +2736,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       sendPrivateMessage();
     });
     document.getElementById('close-private-message-btn').addEventListener('click', () => {
-      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+      stopCamera();
       if (options.groupChat) {
         groupChatActive = false;
         updateGroupChatStatus();
