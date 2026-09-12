@@ -15,13 +15,38 @@ const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
-let savedProfileData = null;
 try {
-  savedProfileData = JSON.parse(localStorage.getItem('the-love-media-profile') || 'null');
+  const remembered = JSON.parse(localStorage.getItem('the-love-media-remembered-login') || 'null');
+  if (remembered?.codename) {
+    currentProfileName = remembered.codename;
+  }
 } catch {}
-let currentProfileBio = savedProfileData?.bio || 'A little about you goes here.';
-let currentProfileStatuses = savedProfileData?.statuses || [];
-let currentConnectionStatus = savedProfileData?.connectionStatus || '';
+
+function getProfileKey(name) {
+  return `the-love-media-profile-${String(name || 'gayjesus').toLowerCase().trim()}`;
+}
+
+function loadProfileForUser(name) {
+  try {
+    const raw = localStorage.getItem(getProfileKey(name)) || localStorage.getItem('the-love-media-profile');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveProfileForUser(name, data) {
+  try {
+    const payload = JSON.stringify(data);
+    localStorage.setItem(getProfileKey(name), payload);
+    localStorage.setItem('the-love-media-profile', payload);
+  } catch {}
+}
+
+let initialProfileData = loadProfileForUser(currentProfileName);
+let currentProfileBio = initialProfileData?.bio || 'A little about you goes here.';
+let currentProfileStatuses = initialProfileData?.statuses || [];
+let currentConnectionStatus = initialProfileData?.connectionStatus || '';
 let friends = JSON.parse(localStorage.getItem('the-love-media-friends') || '[]');
 let privateMessageOpener = null;
 let pendingPrivateMessageFriend = null;
@@ -174,7 +199,7 @@ function savePrivateThread(friend, messages) {
 }
 
 function clearPersistedSession() {
-  localStorage.removeItem('the-love-media-profile');
+  currentSessionToken = '';
 }
 
 function savePrivateMail() {
@@ -543,15 +568,16 @@ function renderLoginPage() {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
       currentSessionToken = result.sessionToken || '';
-      currentProfileBio = result.profile?.bio || currentProfileBio;
-      currentProfileStatuses = result.profile?.statuses || currentProfileStatuses;
-      currentConnectionStatus = result.profile?.connectionStatus || currentConnectionStatus;
-      localStorage.setItem('the-love-media-profile', JSON.stringify({
+      const savedUserProf = loadProfileForUser(currentProfileName);
+      currentProfileBio = result.profile?.bio || savedUserProf?.bio || 'A little about you goes here.';
+      currentProfileStatuses = result.profile?.statuses || savedUserProf?.statuses || [];
+      currentConnectionStatus = result.profile?.connectionStatus || savedUserProf?.connectionStatus || '';
+      saveProfileForUser(currentProfileName, {
         name: currentProfileName,
         bio: currentProfileBio,
         statuses: currentProfileStatuses,
         connectionStatus: currentConnectionStatus
-      }));
+      });
       if (rememberLoginInput.checked) {
         localStorage.setItem('the-love-media-remembered-login', JSON.stringify({ codename }));
       }
@@ -800,6 +826,14 @@ function openVideoDB() {
 const memoryVideosMap = new Map();
 
 async function getWelcomeVideos() {
+  const sortVideos = (vids) => (vids || []).sort((a, b) => {
+    const aPinned = Boolean(a.pinned);
+    const bPinned = Boolean(b.pinned);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return (b.timestamp || 0) - (a.timestamp || 0);
+  });
+
   const db = await openVideoDB();
   if (db) {
     try {
@@ -810,17 +844,17 @@ async function getWelcomeVideos() {
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => resolve([]);
       });
-      const welcomeVids = all.filter((v) => (v.kind || 'welcome') === 'welcome').sort((a, b) => b.timestamp - a.timestamp);
+      const welcomeVids = sortVideos(all.filter((v) => (v.kind || 'welcome') === 'welcome'));
       if (welcomeVids.length > 0) return welcomeVids.map(normalizeVideoComments);
     } catch (e) {
       console.warn('IndexedDB read error:', e);
     }
   }
-  const mem = Array.from(memoryVideosMap.values()).filter((v) => (v.kind || 'welcome') === 'welcome').sort((a, b) => b.timestamp - a.timestamp);
+  const mem = sortVideos(Array.from(memoryVideosMap.values()).filter((v) => (v.kind || 'welcome') === 'welcome'));
   if (mem.length > 0) return mem.map(normalizeVideoComments);
 
   try {
-    return (JSON.parse(localStorage.getItem('the-love-media-welcome-videos') || '[]')).map(normalizeVideoComments);
+    return sortVideos((JSON.parse(localStorage.getItem('the-love-media-welcome-videos') || '[]'))).map(normalizeVideoComments);
   } catch {
     return [];
   }
@@ -842,6 +876,31 @@ async function saveWelcomeVideo(video) {
     } catch (e) {
       console.warn('IndexedDB save error:', e);
     }
+  }
+}
+
+async function togglePinWelcomeVideo(id) {
+  const db = await openVideoDB();
+  if (db) {
+    try {
+      const video = await new Promise((resolve) => {
+        const tx = db.transaction(VIDEO_STORE, 'readonly');
+        const store = tx.objectStore(VIDEO_STORE);
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      });
+      if (video) {
+        video.pinned = !video.pinned;
+        await saveWelcomeVideo(video);
+        return;
+      }
+    } catch {}
+  }
+  const memVid = memoryVideosMap.get(id);
+  if (memVid) {
+    memVid.pinned = !memVid.pinned;
+    await saveWelcomeVideo(memVid);
   }
 }
 
@@ -1219,10 +1278,16 @@ async function renderWelcomeVideosPage() {
           <h3>Your videos (${videos.length})</h3>
           <div class="friends-list" id="videos-list">
             ${videos.length ? videos.map((video) => `
-              <div class="private-message-item" style="display:block; margin-bottom:12px; position: relative;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="private-message-item" style="display:block; margin-bottom:12px; position: relative; ${video.pinned ? 'border: 1px solid rgba(245, 158, 11, 0.6); background: rgba(245, 158, 11, 0.08);' : ''}">
+                ${video.pinned ? `<div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">📌 PINNED TO TOP</div>` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                   <strong>${video.title || 'Welcome video'}</strong>
-                  ${isGayjesus ? `<button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button class="pin-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: ${video.pinned ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)'}; border: 1px solid ${video.pinned ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.2)'}; border-radius: 6px; color: ${video.pinned ? '#fbbf24' : '#fff'}; cursor: pointer;">
+                      ${video.pinned ? '📌 Unpin' : '📌 Pin to top'}
+                    </button>
+                    ${isGayjesus ? `<button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+                  </div>
                 </div>
                 <video id="video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 200px; object-fit: cover; cursor: pointer;" controls></video>
                 <div style="margin-top: 12px;">
@@ -1691,6 +1756,14 @@ async function renderWelcomeVideosPage() {
         input.value = '';
         await renderWelcomeVideosPage();
       }
+    });
+  });
+
+  document.querySelectorAll('.pin-video-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const videoId = btn.getAttribute('data-video-id');
+      await togglePinWelcomeVideo(videoId);
+      await renderWelcomeVideosPage();
     });
   });
 
@@ -3789,12 +3862,12 @@ function renderChatroomWorkspace(profileToView = null) {
     currentProfileStatuses = ['Single', 'Coupled', 'Married'].filter((status) => {
       return document.getElementById(`status-${status.toLowerCase()}`).checked;
     });
-    localStorage.setItem('the-love-media-profile', JSON.stringify({
+    saveProfileForUser(currentProfileName, {
       name: currentProfileName,
       bio: currentProfileBio,
       statuses: currentProfileStatuses,
       connectionStatus: currentConnectionStatus
-    }));
+    });
     try {
       await accountApi('/api/profile', {
         codename: currentProfileName,
