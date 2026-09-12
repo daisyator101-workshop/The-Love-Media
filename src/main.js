@@ -1778,7 +1778,7 @@ function openPrivateMail() {
   const existingMail = document.getElementById('private-mail-modal');
   if (existingMail) existingMail.remove();
 
-  const onlinePeople = new Set(['Room bot', currentProfileName]);
+  const onlinePeople = new Set([currentProfileName]);
   const mailModal = document.createElement('div');
   mailModal.className = 'friends-connect-modal';
   mailModal.id = 'private-mail-modal';
@@ -1909,7 +1909,7 @@ function openFriendsConnect() {
     openGroupChatMessagePopup();
   });
   const friendsList = document.getElementById('friends-connect-list');
-  const onlinePeople = new Set(['Room bot', currentProfileName]);
+  const onlinePeople = new Set([currentProfileName]);
   if (friends.length === 0) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'profile-preview-label';
@@ -2431,7 +2431,12 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     document.getElementById('reset-room-background-btn').remove();
   });
   const roomMatesList = document.getElementById('room-mates-list');
-  ['Room bot', currentProfileName].forEach((name) => {
+  const activeRoomMates = [...new Set([
+    currentProfileName,
+    ...(roomMembers[roomIdForName(roomName)] || []),
+    ...accounts.map((a) => (typeof a === 'string' ? a : a?.codename)).filter((name) => name && name !== currentProfileName)
+  ])];
+  activeRoomMates.forEach((name) => {
     const roomMateEntry = document.createElement('div');
     roomMateEntry.className = 'room-mate-entry';
 
@@ -2497,7 +2502,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         </div>
         <div class="form-group">
           <label for="roommate-profile-bio">Bio</label>
-          <textarea id="roommate-profile-bio" rows="4" disabled>${name === 'Room bot' ? 'A temporary bot for testing the chatroom.' : 'A little about you goes here.'}</textarea>
+          <textarea id="roommate-profile-bio" rows="4" disabled>A little about you goes here.</textarea>
         </div>
         <div class="form-group">
           <label>Status</label>
@@ -2527,17 +2532,12 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     `;
 
     document.getElementById('root').appendChild(profileModal);
-    const isRoomBot = name === 'Room bot';
     document.getElementById('roommate-profile-name').value = name;
-    document.getElementById('roommate-profile-bio').value = isRoomBot
-      ? 'A temporary bot for testing the chatroom.'
-      : currentProfileBio;
-    document.getElementById('roommate-connection-status').value = isRoomBot
-      ? 'Available to help test the chatroom.'
-      : currentConnectionStatus;
+    document.getElementById('roommate-profile-bio').value = currentProfileBio;
+    document.getElementById('roommate-connection-status').value = currentConnectionStatus;
     ['Single', 'Coupled', 'Married'].forEach((status) => {
       const statusInput = profileModal.querySelector(`#roommate-status-${status.toLowerCase()}`);
-      if (statusInput) statusInput.checked = !isRoomBot && currentProfileStatuses.includes(status);
+      if (statusInput) statusInput.checked = currentProfileStatuses.includes(status);
     });
     document.getElementById('close-roommate-profile-btn').addEventListener('click', () => {
       profileModal.remove();
@@ -2675,7 +2675,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const remoteVideo = document.getElementById('private-remote-video');
     const cameraStatus = document.getElementById('private-camera-status');
     const messageThread = document.getElementById('private-message-thread');
-    const isFriendOnline = new Set(['Room bot', currentProfileName]).has(name);
+    const isFriendOnline = new Set([currentProfileName, ...(Object.values(roomMembers).flat())]).has(name);
     const threadMessages = getPrivateThread(name);
 
     const addPrivateMessage = (sender, message, ownMessage = false) => {
@@ -2884,9 +2884,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
       window.setTimeout(() => {
         if (!document.body.contains(messageModal) || !isFriendOnline) return;
-        const reply = name === 'Room bot'
-          ? 'Room bot: Thanks for your message.'
-          : `${name}: Thanks for reaching out.`;
+        const reply = `${name}: Thanks for reaching out.`;
         appendThreadMessage(name, reply, false);
       }, 600);
     };
@@ -2930,12 +2928,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     window.history.back();
   });
 
-  const botReplies = [
-    'Room bot: That sounds worth talking about.',
-    'Room bot: I am here and listening.',
-    'Room bot: Thanks for sharing that with the room.'
-  ];
-  let botReplyIndex = 0;
   setupEmojiPicker('room-emoji-btn', 'room-emoji-picker', 'room-message-input');
 
   const sendRoomMessage = () => {
@@ -2953,17 +2945,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     bubble.append(sender, messageText);
     messages.appendChild(bubble);
     input.value = '';
-
-    window.setTimeout(() => {
-      const currentMessages = document.querySelector('.room-chat-messages');
-      if (!currentMessages) return;
-
-      const botBubble = document.createElement('div');
-      botBubble.className = 'message-item';
-      botBubble.textContent = botReplies[botReplyIndex % botReplies.length];
-      botReplyIndex += 1;
-      currentMessages.appendChild(botBubble);
-    }, 600);
   };
 
   document.getElementById('send-room-message-btn').addEventListener('click', sendRoomMessage);
@@ -3173,9 +3154,7 @@ function renderChatroomWorkspace(profileToView = null) {
 
   if (profileToView) {
     profileNameInput.value = profileToView;
-    profileBioInput.value = profileToView === 'Room bot'
-      ? 'A temporary bot for testing the chatroom.'
-      : 'A little about you goes here.';
+    profileBioInput.value = 'A little about you goes here.';
     profileEditorModal.querySelectorAll('input, textarea').forEach((field) => {
       field.disabled = true;
     });
