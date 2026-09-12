@@ -1783,11 +1783,8 @@ function openFriendsConnect() {
   enterGroupChatButton.addEventListener('click', () => {
     groupChatActive = true;
     updateGroupChatStatus();
-    if (privateMessageOpener) {
-      privateMessageOpener('Group chat', { groupChat: true });
-    } else {
-      openGroupChatMessagePopup();
-    }
+    overlay.remove();
+    openGroupChatMessagePopup();
   });
   const friendsList = document.getElementById('friends-connect-list');
   const onlinePeople = new Set(['Room bot', currentProfileName]);
@@ -2010,7 +2007,8 @@ function openGroupChatMessagePopup() {
   });
 }
 
-function openGroupCameraScreen(cameraCount) {
+function openGroupCameraScreen(cameraCount = 4) {
+  let activeCameraCount = Math.min(16, Math.max(1, Number(cameraCount) || 4));
   const existingScreen = document.getElementById('group-camera-screen');
   if (existingScreen) existingScreen.remove();
 
@@ -2023,7 +2021,13 @@ function openGroupCameraScreen(cameraCount) {
         <p class="eyebrow">The Love Media</p>
         <h2>Group camera view</h2>
       </div>
-      <button class="secondary-btn" id="close-group-camera-btn">Exit</button>
+      <div class="group-camera-screen-actions">
+        <div class="group-camera-controls">
+          <label for="group-screen-camera-count">Cameras</label>
+          <input id="group-screen-camera-count" type="number" min="1" max="16" value="${activeCameraCount}" />
+        </div>
+        <button class="secondary-btn" id="close-group-camera-btn">Exit</button>
+      </div>
     </div>
     <div class="group-camera-grid" id="group-camera-grid"></div>
     <p class="group-camera-screen-status" id="group-camera-screen-status" aria-live="polite"></p>
@@ -2035,14 +2039,45 @@ function openGroupCameraScreen(cameraCount) {
 
   const localTile = document.createElement('div');
   localTile.className = 'group-camera-tile';
-  localTile.innerHTML = `<video id="group-local-camera" autoplay muted playsinline></video><strong></strong>`;
-  localTile.querySelector('strong').textContent = currentProfileName;
-  cameraGrid.appendChild(localTile);
+  localTile.innerHTML = `<video id="group-local-camera" autoplay muted playsinline></video><strong>${currentProfileName} (You)</strong>`;
 
   const peerConnections = new Map();
   const peerTiles = new Map();
   const peerId = crypto.randomUUID();
   let signalingSocket = null;
+
+  const updateGridDisplay = () => {
+    cameraGrid.innerHTML = '';
+    cameraGrid.appendChild(localTile);
+    let occupied = 1;
+    peerTiles.forEach((tile) => {
+      cameraGrid.appendChild(tile);
+      occupied += 1;
+    });
+    for (let slot = occupied + 1; slot <= activeCameraCount; slot++) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'group-camera-tile group-camera-placeholder';
+      placeholder.innerHTML = `
+        <div class="placeholder-camera-icon">📷</div>
+        <strong>Camera Slot ${slot}</strong>
+        <span>Waiting for participant...</span>
+      `;
+      cameraGrid.appendChild(placeholder);
+    }
+  };
+
+  updateGridDisplay();
+
+  const screenCountInput = document.getElementById('group-screen-camera-count');
+  screenCountInput.addEventListener('input', () => {
+    const val = Number(screenCountInput.value);
+    if (!Number.isNaN(val) && val >= 1 && val <= 16) {
+      activeCameraCount = Math.min(16, Math.max(1, val));
+      const modalCountInput = document.getElementById('group-camera-count');
+      if (modalCountInput) modalCountInput.value = activeCameraCount;
+      updateGridDisplay();
+    }
+  });
 
   const sendSignal = (message) => {
     if (signalingSocket?.readyState === WebSocket.OPEN) signalingSocket.send(JSON.stringify(message));
@@ -2053,6 +2088,7 @@ function openGroupCameraScreen(cameraCount) {
     peerConnections.delete(remotePeerId);
     peerTiles.get(remotePeerId)?.remove();
     peerTiles.delete(remotePeerId);
+    updateGridDisplay();
   };
 
   const addRemotePeer = (remotePeerId, stream) => {
@@ -2062,10 +2098,10 @@ function openGroupCameraScreen(cameraCount) {
       tile.className = 'group-camera-tile';
       tile.innerHTML = '<video autoplay playsinline></video><strong></strong>';
       tile.querySelector('strong').textContent = `Participant ${peerTiles.size + 1}`;
-      cameraGrid.appendChild(tile);
       peerTiles.set(remotePeerId, tile);
     }
     tile.querySelector('video').srcObject = stream;
+    updateGridDisplay();
   };
 
   const connectToPeer = async (remotePeerId, stream, shouldOffer) => {
