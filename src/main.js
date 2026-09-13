@@ -1972,29 +1972,29 @@ async function renderGayjesusBlogPage() {
   };
 
   app.innerHTML = `
-    <div class="app-shell">
-      <div class="floating-hearts welcome-hearts" aria-hidden="true">
-        <span class="heart heart-1">♥</span>
-        <span class="heart heart-2">♥</span>
-        <span class="heart heart-3">♥</span>
-        <span class="heart heart-4">♥</span>
-        <span class="heart heart-5">♥</span>
-        <span class="heart heart-6">♥</span>
-      </div>
-      <div class="welcome-card">
+    <div class="workspace-shell">
+      <div class="workspace-card">
         <div class="brand-row">
-          <p class="eyebrow">Gayjesus</p>
-          <span class="account-count">${accountCountLabel()}</span>
+          <p class="eyebrow">Gayjesus Blog</p>
+          <div class="header-actions">
+            <button class="secondary-btn header-pill-btn" id="back-from-blog-full-btn">Back</button>
+          </div>
         </div>
-        <h1>Blog & topic videos</h1>
-        <p>Church updates, lifestyle, advice, and community topics.</p>
+        <div style="display: flex; gap: 24px; margin-bottom: 24px;">
+          <div style="flex: 1;">
+            <h1>Blog & topic videos</h1>
+            <p>Church updates, lifestyle, advice, and community topics.</p>
 
-        <div class="church-feature-card" style="margin-top: 16px; padding: 14px; border-radius: 14px; background: rgba(148, 102, 211, 0.15); border: 1px solid rgba(148, 102, 211, 0.3);">
-          <p style="margin: 0 0 6px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #d4a5ff;">Church where I reside</p>
-          <h4 style="margin: 0 0 4px;">Phoenix Community Church UCC</h4>
-          <p style="margin: 0 0 4px; color: #f0d6ff; font-size: 0.9rem;">Progressive and inclusive Open and Affirming congregation in Kalamazoo, Michigan.</p>
-          <p style="margin: 0 0 8px; color: #e9dff6; font-size: 0.85rem;">345 W. Michigan Ave., Kalamazoo, MI 49007</p>
-          <a style="display: inline-block; padding: 6px 12px; border-radius: 8px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; text-decoration: none; font-size: 0.75rem; font-weight: 700;" href="https://www.phoenixcommunitychurch.org/" target="_blank" rel="noopener noreferrer">Visit church website</a>
+          </div>
+          <div style="width: 320px; flex-shrink: 0;">
+            <div class="church-feature-card" style="margin-top: 0; padding: 14px; border-radius: 14px; background: rgba(148, 102, 211, 0.15); border: 1px solid rgba(148, 102, 211, 0.3); position: sticky; top: 100px;">
+              <p style="margin: 0 0 6px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #d4a5ff;">Church where I reside</p>
+              <h4 style="margin: 0 0 4px;">Phoenix Community Church UCC</h4>
+              <p style="margin: 0 0 4px; color: #f0d6ff; font-size: 0.9rem;">Progressive and inclusive Open and Affirming congregation in Kalamazoo, Michigan.</p>
+              <p style="margin: 0 0 8px; color: #e9dff6; font-size: 0.85rem;">345 W. Michigan Ave., Kalamazoo, MI 49007</p>
+              <a style="display: inline-block; padding: 6px 12px; border-radius: 8px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; text-decoration: none; font-size: 0.75rem; font-weight: 700;" href="https://www.phoenixcommunitychurch.org/" target="_blank" rel="noopener noreferrer">Visit church website</a>
+            </div>
+          </div>
         </div>
 
         ${isGayjesus ? `
@@ -2066,10 +2066,6 @@ async function renderGayjesusBlogPage() {
           <div class="friends-list" id="gayjesus-blog-list">
             ${renderBlogTopicListWithDelete(videos, isGayjesus)}
           </div>
-        </div>
-
-        <div class="profile-editor-actions" style="margin-top: 20px;">
-          <button class="secondary-btn" id="back-from-blog-btn" type="button">Back</button>
         </div>
       </div>
     </div>
@@ -2552,10 +2548,13 @@ async function renderGayjesusBlogPage() {
     });
   });
 
-  document.getElementById('back-from-blog-btn').addEventListener('click', () => {
-    stopAllTracks();
-    window.history.back();
-  });
+  const backBtn = document.getElementById('back-from-blog-full-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      stopAllTracks();
+      window.history.back();
+    });
+  }
 }
 
 function renderBlogTopicListWithDelete(videos, isGayjesus) {
