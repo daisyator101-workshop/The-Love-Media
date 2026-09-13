@@ -2514,7 +2514,7 @@ function openPrivateMail() {
         <div>
           <p class="eyebrow">The Love Media</p>
           <h2>PM Mail</h2>
-          <p class="profile-preview-label">Private messages sent while friends are offline appear here for 30 days.</p>
+          <p class="profile-preview-label">Private messages sent while you're offline appear here for 30 days.</p>
         </div>
         <button class="secondary-btn" id="close-pm-mail-btn" type="button">Exit</button>
       </div>
