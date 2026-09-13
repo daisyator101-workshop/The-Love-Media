@@ -1312,8 +1312,9 @@ async function renderWelcomeVideosPage() {
           <span class="account-count">${accountCountLabel()}</span>
         </div>
         <h1>Welcome videos</h1>
-        <p>Record fresh content or test your camera setup to welcome members.</p>
+        <p>Community welcome and announcement videos from Gayjesus.</p>
         
+        ${isGayjesus ? `
         <div id="video-recording-section" style="margin-top: 20px; padding: 18px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
           <h3 style="margin: 0 0 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; color: #fff;">
             <span>📷 Camera & Recording Studio</span>
@@ -1366,9 +1367,10 @@ async function renderWelcomeVideosPage() {
           </div>
           <p class="private-message-status" id="recording-status" aria-live="polite" style="margin-top: 10px; font-weight: 600;"></p>
         </div>
+        ` : ''}
 
         <div style="margin-top: 20px;">
-          <h3>Your videos (${videos.length})</h3>
+          <h3>Welcome videos (${videos.length})</h3>
           <div class="friends-list" id="videos-list">
             ${videos.length ? videos.map((video) => `
               <div class="private-message-item" style="display:block; margin-bottom:12px; position: relative; ${video.pinned ? 'border: 1px solid rgba(245, 158, 11, 0.6); background: rgba(245, 158, 11, 0.08);' : ''}">
@@ -1379,10 +1381,12 @@ async function renderWelcomeVideosPage() {
                     <button class="share-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer;">
                       🔗 Share
                     </button>
-                    <button class="pin-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: ${video.pinned ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)'}; border: 1px solid ${video.pinned ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.2)'}; border-radius: 6px; color: ${video.pinned ? '#fbbf24' : '#fff'}; cursor: pointer;">
-                      ${video.pinned ? '📌 Unpin' : '📌 Pin to top'}
-                    </button>
-                    ${isGayjesus ? `<button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+                    ${isGayjesus ? `
+                      <button class="pin-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: ${video.pinned ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)'}; border: 1px solid ${video.pinned ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.2)'}; border-radius: 6px; color: ${video.pinned ? '#fbbf24' : '#fff'}; cursor: pointer;">
+                        ${video.pinned ? '📌 Unpin' : '📌 Pin to top'}
+                      </button>
+                      <button class="delete-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>
+                    ` : ''}
                   </div>
                 </div>
                 <video id="video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 200px; object-fit: cover; cursor: pointer;" controls></video>
@@ -1436,19 +1440,20 @@ async function renderWelcomeVideosPage() {
   });
 
   // Setup event listeners
-  const previewBtn = document.getElementById('preview-recording-btn');
-  const stopPreviewBtn = document.getElementById('stop-preview-btn');
-  const startBtn = document.getElementById('start-recording-btn');
-  const stopBtn = document.getElementById('stop-recording-btn');
-  const status = document.getElementById('recording-status');
-  const placeholder = document.getElementById('camera-placeholder');
-  const badge = document.getElementById('camera-badge');
-  const cameraPreview = document.getElementById('camera-preview');
-  const deviceSelect = document.getElementById('camera-device-select');
-  const cameraRadio = document.getElementById('recording-mode-camera');
-  const screenRadio = document.getElementById('recording-mode-screen');
-  const bothRadio = document.getElementById('recording-mode-both');
-  let currentRecordingMode = 'camera';
+  if (isGayjesus) {
+    const previewBtn = document.getElementById('preview-recording-btn');
+    const stopPreviewBtn = document.getElementById('stop-preview-btn');
+    const startBtn = document.getElementById('start-recording-btn');
+    const stopBtn = document.getElementById('stop-recording-btn');
+    const status = document.getElementById('recording-status');
+    const placeholder = document.getElementById('camera-placeholder');
+    const badge = document.getElementById('camera-badge');
+    const cameraPreview = document.getElementById('camera-preview');
+    const deviceSelect = document.getElementById('camera-device-select');
+    const cameraRadio = document.getElementById('recording-mode-camera');
+    const screenRadio = document.getElementById('recording-mode-screen');
+    const bothRadio = document.getElementById('recording-mode-both');
+    let currentRecordingMode = 'camera';
 
   const populateDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -1828,10 +1833,11 @@ async function renderWelcomeVideosPage() {
     startBtn.style.display = 'inline-block';
     stopBtn.style.display = 'none';
     if (deviceSelect) deviceSelect.disabled = false;
-    cameraRadio.disabled = false;
-    screenRadio.disabled = false;
-    bothRadio.disabled = false;
+    if (cameraRadio) cameraRadio.disabled = false;
+    if (screenRadio) screenRadio.disabled = false;
+    if (bothRadio) bothRadio.disabled = false;
   });
+  }
 
   document.querySelectorAll('.comment-submit-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1932,6 +1938,7 @@ async function renderGayjesusBlogPage() {
           <a style="display: inline-block; padding: 6px 12px; border-radius: 8px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; text-decoration: none; font-size: 0.75rem; font-weight: 700;" href="https://www.phoenixcommunitychurch.org/" target="_blank" rel="noopener noreferrer">Visit church website</a>
         </div>
 
+        ${isGayjesus ? `
         <div id="blog-recording-section" style="margin-top: 20px; padding: 16px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);">
           <div id="blog-recording-preview" style="display: none; margin-bottom: 16px;">
             <video id="blog-camera-preview" autoplay muted playsinline style="width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover;"></video>
@@ -1965,6 +1972,7 @@ async function renderGayjesusBlogPage() {
           </div>
           <p class="private-message-status" id="blog-recording-status" aria-live="polite"></p>
         </div>
+        ` : ''}
 
         <div style="margin-top: 20px;">
           <h3>Blog videos by topic</h3>
@@ -2002,276 +2010,251 @@ async function renderGayjesusBlogPage() {
   });
 
   // Setup event listeners
-  const titleInput = document.getElementById('blog-video-title');
-  const topicInput = document.getElementById('blog-custom-topic');
-  const previewBtn = document.getElementById('preview-blog-recording-btn');
-  const startBtn = document.getElementById('start-blog-recording-btn');
-  const stopBtn = document.getElementById('stop-blog-recording-btn');
-  const status = document.getElementById('blog-recording-status');
-  const previewDiv = document.getElementById('blog-recording-preview');
-  const cameraPreview = document.getElementById('blog-camera-preview');
-  const cameraRadio = document.getElementById('blog-recording-mode-camera');
-  const screenRadio = document.getElementById('blog-recording-mode-screen');
-  const bothRadio = document.getElementById('blog-recording-mode-both');
-  let currentRecordingMode = 'camera';
-  let cameraStream = null;
-  let screenStream = null;
-  let previewCameraStream = null;
-  let audioMixer = null;
+  if (isGayjesus) {
+    const titleInput = document.getElementById('blog-video-title');
+    const topicInput = document.getElementById('blog-custom-topic');
+    const previewBtn = document.getElementById('preview-blog-recording-btn');
+    const startBtn = document.getElementById('start-blog-recording-btn');
+    const stopBtn = document.getElementById('stop-blog-recording-btn');
+    const status = document.getElementById('blog-recording-status');
+    const previewDiv = document.getElementById('blog-recording-preview');
+    const cameraPreview = document.getElementById('blog-camera-preview');
+    const cameraRadio = document.getElementById('blog-recording-mode-camera');
+    const screenRadio = document.getElementById('blog-recording-mode-screen');
+    const bothRadio = document.getElementById('blog-recording-mode-both');
+    let currentRecordingMode = 'camera';
+    let cameraStream = null;
+    let screenStream = null;
+    let previewCameraStream = null;
+    let audioMixer = null;
 
-  const stopCameraPreview = () => {
-    if (previewCameraStream) {
-      previewCameraStream.getTracks().forEach((track) => track.stop());
-      previewCameraStream = null;
-    }
-    if (cameraPreview) {
-      cameraPreview.srcObject = null;
-    }
-  };
-
-  const getBlogCameraStream = async () => {
-    try {
-      return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    } catch {
-      return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    }
-  };
-
-  const ensureCameraPreview = async () => {
-    if (currentRecordingMode === 'screen') {
-      status.textContent = 'Choose camera or both to preview the camera.';
-      return;
-    }
-
-    stopCameraPreview();
-    status.textContent = 'Accessing camera...';
-    previewDiv.style.display = 'block';
-
-    try {
-      previewCameraStream = await getBlogCameraStream();
-      if (cameraPreview) {
-        cameraPreview.srcObject = previewCameraStream;
-        await cameraPreview.play().catch(() => {});
+    const stopCameraPreview = () => {
+      if (previewCameraStream) {
+        previewCameraStream.getTracks().forEach((track) => track.stop());
+        previewCameraStream = null;
       }
-      status.textContent = 'Camera preview live. When ready, start recording.';
-    } catch (err) {
-      status.textContent = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-        ? 'Camera permission denied. Please allow camera access in your browser.'
-        : `Could not access camera (${err.message || 'No camera found'}).`;
-    }
-  };
+      if (cameraPreview) {
+        cameraPreview.srcObject = null;
+      }
+    };
 
-  cameraRadio.addEventListener('change', async () => {
-    currentRecordingMode = 'camera';
-    previewDiv.style.display = 'none';
-    status.textContent = 'Camera mode selected. Preview before you record.';
-    await ensureCameraPreview();
-  });
+    const getBlogCameraStream = async () => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch {
+        return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+    };
 
-  screenRadio.addEventListener('change', () => {
-    currentRecordingMode = 'screen';
-    stopCameraPreview();
-    previewDiv.style.display = 'none';
-    status.textContent = 'Screen mode selected. Choose a screen to record.';
-  });
+    const ensureCameraPreview = async () => {
+      if (currentRecordingMode === 'screen') {
+        status.textContent = 'Choose camera or both to preview the camera.';
+        return;
+      }
 
-  bothRadio.addEventListener('change', async () => {
-    currentRecordingMode = 'both';
-    previewDiv.style.display = 'none';
-    status.textContent = 'Both mode selected. Preview the camera before you record.';
-    await ensureCameraPreview();
-  });
+      stopCameraPreview();
+      status.textContent = 'Accessing camera...';
+      previewDiv.style.display = 'block';
 
-  previewBtn.addEventListener('click', ensureCameraPreview);
-
-  startBtn.addEventListener('click', async () => {
-    try {
-      if (currentRecordingMode === 'camera') {
-        if (!previewCameraStream) {
-          previewCameraStream = await getBlogCameraStream();
-        }
-        let micStream = null;
-        if (previewCameraStream.getAudioTracks().length === 0) {
-          try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
-        }
-        audioMixer = createMixedAudioStream([previewCameraStream, micStream]);
-        const videoTrack = previewCameraStream.getVideoTracks()[0];
-        const audioTrack = audioMixer.stream.getAudioTracks()[0];
-        const tracks = [videoTrack].filter(Boolean);
-        if (audioTrack) tracks.push(audioTrack);
-        recordingStream = new MediaStream(tracks);
-
+      try {
+        previewCameraStream = await getBlogCameraStream();
         if (cameraPreview) {
           cameraPreview.srcObject = previewCameraStream;
-          cameraPreview.muted = true;
           await cameraPreview.play().catch(() => {});
         }
-      } else if (currentRecordingMode === 'screen') {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
-        let micStream = null;
-        try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
-        audioMixer = createMixedAudioStream([screenStream, micStream]);
-        const videoTrack = screenStream.getVideoTracks()[0];
-        const audioTrack = audioMixer.stream.getAudioTracks()[0];
-        const tracks = [videoTrack].filter(Boolean);
-        if (audioTrack) tracks.push(audioTrack);
-        recordingStream = new MediaStream(tracks);
-
-        if (cameraPreview) {
-          cameraPreview.srcObject = screenStream;
-          cameraPreview.muted = true;
-          await cameraPreview.play().catch(() => {});
-        }
-      } else if (currentRecordingMode === 'both') {
-        if (!previewCameraStream) {
-          previewCameraStream = await getBlogCameraStream();
-        }
-        cameraStream = previewCameraStream;
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
-        let micStream = null;
-        if (cameraStream.getAudioTracks().length === 0) {
-          try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
-        }
-        audioMixer = createMixedAudioStream([cameraStream, screenStream, micStream]);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 1920;
-        canvas.height = 1080;
-        const ctx = canvas.getContext('2d');
-        
-        const screenVideo = document.createElement('video');
-        const cameraVideo = document.createElement('video');
-        screenVideo.muted = true;
-        cameraVideo.muted = true;
-        screenVideo.srcObject = screenStream;
-        cameraVideo.srcObject = cameraStream;
-        await screenVideo.play().catch(() => {});
-        await cameraVideo.play().catch(() => {});
-        
-        const canvasStream = canvas.captureStream(30);
-        const videoTrack = canvasStream.getVideoTracks()[0];
-        const audioTrack = audioMixer.stream.getAudioTracks()[0];
-        const tracks = [videoTrack].filter(Boolean);
-        if (audioTrack) tracks.push(audioTrack);
-        recordingStream = new MediaStream(tracks);
-
-        // Animation loop to draw to canvas
-        const drawLoop = setInterval(() => {
-          if (!screenVideo.paused) {
-            ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-            // Draw camera in bottom-right corner (250x180)
-            if (!cameraVideo.paused) {
-              ctx.drawImage(cameraVideo, canvas.width - 260, canvas.height - 190, 250, 180);
-              // Add border
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-              ctx.lineWidth = 2;
-              ctx.strokeRect(canvas.width - 260, canvas.height - 190, 250, 180);
-            }
-          }
-        }, 1000 / 30);
-        
-        startBtn.dataset.drawLoop = drawLoop;
-        startBtn.dataset.screenVideo = screenVideo;
-        startBtn.dataset.cameraVideo = cameraVideo;
+        status.textContent = 'Camera preview live. When ready, start recording.';
+      } catch (err) {
+        status.textContent = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
+          ? 'Camera permission denied. Please allow camera access in your browser.'
+          : `Could not access camera (${err.message || 'No camera found'}).`;
       }
-      
-      previewDiv.style.display = 'block';
-      recordedChunks = [];
-      const options = getRecordingOptions();
-      mediaRecorder = new MediaRecorder(recordingStream, options);
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          recordedChunks.push(event.data);
-        }
-      };
-      mediaRecorder.onstop = async () => {
-        if (audioMixer) {
-          audioMixer.close();
-          audioMixer = null;
-        }
-        const mimeType = options.mimeType || 'video/webm';
-        const blob = new Blob(recordedChunks, { type: mimeType });
-        recordingStream.getTracks().forEach((track) => track.stop());
-        if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
-        if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
-        
-        if (startBtn.dataset.drawLoop) {
-          clearInterval(parseInt(startBtn.dataset.drawLoop));
-          delete startBtn.dataset.drawLoop;
-        }
-        
+    };
+
+    if (cameraRadio) {
+      cameraRadio.addEventListener('change', async () => {
+        currentRecordingMode = 'camera';
         previewDiv.style.display = 'none';
-          status.textContent = 'Video recorded! Add a title and topic to save.';
-          
-          const title = titleInput.value.trim() || 'Blog video';
-          const topic = topicInput.value.trim() || 'Updates';
-          if (title) {
-            const newVideo = { id: crypto.randomUUID(), title, topic, blob: blob, timestamp: Date.now(), type: currentRecordingMode, comments: [], kind: 'blog' };
-            await saveGayjesusBlogVideo(newVideo);
-            status.textContent = 'Video saved!';
-            titleInput.value = '';
-            topicInput.value = '';
-            await renderGayjesusBlogPage();
+        status.textContent = 'Camera mode selected. Preview before you record.';
+        await ensureCameraPreview();
+      });
+    }
+
+    if (screenRadio) {
+      screenRadio.addEventListener('change', () => {
+        currentRecordingMode = 'screen';
+        stopCameraPreview();
+        previewDiv.style.display = 'none';
+        status.textContent = 'Screen mode selected. Choose a screen to record.';
+      });
+    }
+
+    if (bothRadio) {
+      bothRadio.addEventListener('change', async () => {
+        currentRecordingMode = 'both';
+        previewDiv.style.display = 'none';
+        status.textContent = 'Both mode selected. Preview the camera before you record.';
+        await ensureCameraPreview();
+      });
+    }
+
+    if (previewBtn) previewBtn.addEventListener('click', ensureCameraPreview);
+
+    if (startBtn) {
+      startBtn.addEventListener('click', async () => {
+        try {
+          if (currentRecordingMode === 'camera') {
+            if (!previewCameraStream) {
+              previewCameraStream = await getBlogCameraStream();
+            }
+            let micStream = null;
+            if (previewCameraStream.getAudioTracks().length === 0) {
+              try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+            }
+            audioMixer = createMixedAudioStream([previewCameraStream, micStream]);
+            const videoTrack = previewCameraStream.getVideoTracks()[0];
+            const audioTrack = audioMixer.stream.getAudioTracks()[0];
+            const tracks = [videoTrack].filter(Boolean);
+            if (audioTrack) tracks.push(audioTrack);
+            recordingStream = new MediaStream(tracks);
+
+            if (cameraPreview) {
+              cameraPreview.srcObject = previewCameraStream;
+              cameraPreview.muted = true;
+              await cameraPreview.play().catch(() => {});
+            }
+          } else if (currentRecordingMode === 'screen') {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+            let micStream = null;
+            try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+            audioMixer = createMixedAudioStream([screenStream, micStream]);
+            const videoTrack = screenStream.getVideoTracks()[0];
+            const audioTrack = audioMixer.stream.getAudioTracks()[0];
+            const tracks = [videoTrack].filter(Boolean);
+            if (audioTrack) tracks.push(audioTrack);
+            recordingStream = new MediaStream(tracks);
+
+            if (cameraPreview) {
+              cameraPreview.srcObject = screenStream;
+              cameraPreview.muted = true;
+              await cameraPreview.play().catch(() => {});
+            }
+          } else if (currentRecordingMode === 'both') {
+            if (!previewCameraStream) {
+              previewCameraStream = await getBlogCameraStream();
+            }
+            cameraStream = previewCameraStream;
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+            let micStream = null;
+            if (cameraStream.getAudioTracks().length === 0) {
+              try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+            }
+            audioMixer = createMixedAudioStream([cameraStream, screenStream, micStream]);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 1920;
+            canvas.height = 1080;
+            const ctx = canvas.getContext('2d');
+            
+            const screenVideo = document.createElement('video');
+            const cameraVideo = document.createElement('video');
+            screenVideo.muted = true;
+            cameraVideo.muted = true;
+            screenVideo.srcObject = screenStream;
+            cameraVideo.srcObject = cameraStream;
+            await screenVideo.play().catch(() => {});
+            await cameraVideo.play().catch(() => {});
+            
+            const canvasStream = canvas.captureStream(30);
+            const videoTrack = canvasStream.getVideoTracks()[0];
+            const audioTrack = audioMixer.stream.getAudioTracks()[0];
+            const tracks = [videoTrack].filter(Boolean);
+            if (audioTrack) tracks.push(audioTrack);
+            recordingStream = new MediaStream(tracks);
+
+            const drawLoop = setInterval(() => {
+              if (!screenVideo.paused) {
+                ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+                if (!cameraVideo.paused) {
+                  ctx.drawImage(cameraVideo, canvas.width - 260, canvas.height - 190, 250, 180);
+                  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                  ctx.lineWidth = 2;
+                  ctx.strokeRect(canvas.width - 260, canvas.height - 190, 250, 180);
+                }
+              }
+            }, 1000 / 30);
+            
+            startBtn.dataset.drawLoop = drawLoop;
+            startBtn.dataset.screenVideo = screenVideo;
+            startBtn.dataset.cameraVideo = cameraVideo;
           }
-        };
-        mediaRecorder.start(500);
-        startBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-block';
-        cameraRadio.disabled = true;
-        screenRadio.disabled = true;
-        bothRadio.disabled = true;
-        status.textContent = 'Recording...';
-      } catch (error) {
-        status.textContent = currentRecordingMode === 'camera' ? 'Camera access denied or not available.' : (currentRecordingMode === 'screen' ? 'Screen share cancelled or not available.' : 'Camera or screen access denied.');
+          
+          previewDiv.style.display = 'block';
+          recordedChunks = [];
+          const options = getRecordingOptions();
+          mediaRecorder = new MediaRecorder(recordingStream, options);
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunks.push(event.data);
+            }
+          };
+          mediaRecorder.onstop = async () => {
+            if (audioMixer) {
+              audioMixer.close();
+              audioMixer = null;
+            }
+            const mimeType = options.mimeType || 'video/webm';
+            const blob = new Blob(recordedChunks, { type: mimeType });
+            recordingStream.getTracks().forEach((track) => track.stop());
+            if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+            if (screenStream) screenStream.getTracks().forEach((track) => track.stop());
+            
+            if (startBtn.dataset.drawLoop) {
+              clearInterval(parseInt(startBtn.dataset.drawLoop));
+              delete startBtn.dataset.drawLoop;
+            }
+            
+            previewDiv.style.display = 'none';
+            status.textContent = 'Video recorded! Add a title and topic to save.';
+            
+            const title = titleInput.value.trim() || 'Blog video';
+            const topic = topicInput.value.trim() || 'Updates';
+            if (title) {
+              const newVideo = { id: crypto.randomUUID(), title, topic, blob: blob, timestamp: Date.now(), type: currentRecordingMode, comments: [], kind: 'blog' };
+              await saveGayjesusBlogVideo(newVideo);
+              status.textContent = 'Video saved!';
+              titleInput.value = '';
+              topicInput.value = '';
+              await renderGayjesusBlogPage();
+            }
+          };
+          mediaRecorder.start(500);
+          startBtn.style.display = 'none';
+          stopBtn.style.display = 'inline-block';
+          cameraRadio.disabled = true;
+          screenRadio.disabled = true;
+          bothRadio.disabled = true;
+          status.textContent = 'Recording...';
+        } catch (error) {
+          status.textContent = currentRecordingMode === 'camera' ? 'Camera access denied or not available.' : (currentRecordingMode === 'screen' ? 'Screen share cancelled or not available.' : 'Camera or screen access denied.');
+          cameraRadio.disabled = false;
+          screenRadio.disabled = false;
+          bothRadio.disabled = false;
+        }
+      });
+    }
+
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        startBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
         cameraRadio.disabled = false;
         screenRadio.disabled = false;
         bothRadio.disabled = false;
-      }
-    });
-
-    stopBtn.addEventListener('click', () => {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      startBtn.style.display = 'inline-block';
-      stopBtn.style.display = 'none';
-      cameraRadio.disabled = false;
-      screenRadio.disabled = false;
-      bothRadio.disabled = false;
-    });
-
-    // Delete video buttons
-    document.querySelectorAll('.blog-comment-submit-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const videoId = btn.getAttribute('data-video-id');
-        const input = document.querySelector(`.blog-comment-input[data-video-id="${videoId}"]`);
-        if (!input) return;
-        await addVideoComment({ videoId, kind: 'blog', text: input.value });
-        input.value = '';
-        await renderGayjesusBlogPage();
       });
-    });
-
-    document.querySelectorAll('.blog-comment-input').forEach((input) => {
-      input.addEventListener('keydown', async (event) => {
-        if (event.key === 'Enter') {
-          const videoId = input.getAttribute('data-video-id');
-          await addVideoComment({ videoId, kind: 'blog', text: input.value });
-          input.value = '';
-          await renderGayjesusBlogPage();
-        }
-      });
-    });
-
-    document.querySelectorAll('.share-blog-video-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const videoId = btn.getAttribute('data-video-id');
-        const targetVideo = videos.find((v) => v.id === videoId);
-        if (targetVideo) {
-          await handleShareVideo(targetVideo, btn);
-        }
-      });
-    });
+    }
 
     document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -2282,6 +2265,40 @@ async function renderGayjesusBlogPage() {
         }
       });
     });
+  }
+
+  // Comment & Share event listeners (Available to everyone)
+  document.querySelectorAll('.blog-comment-submit-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const videoId = btn.getAttribute('data-video-id');
+      const input = document.querySelector(`.blog-comment-input[data-video-id="${videoId}"]`);
+      if (!input) return;
+      await addVideoComment({ videoId, kind: 'blog', text: input.value });
+      input.value = '';
+      await renderGayjesusBlogPage();
+    });
+  });
+
+  document.querySelectorAll('.blog-comment-input').forEach((input) => {
+    input.addEventListener('keydown', async (event) => {
+      if (event.key === 'Enter') {
+        const videoId = input.getAttribute('data-video-id');
+        await addVideoComment({ videoId, kind: 'blog', text: input.value });
+        input.value = '';
+        await renderGayjesusBlogPage();
+      }
+    });
+  });
+
+  document.querySelectorAll('.share-blog-video-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const videoId = btn.getAttribute('data-video-id');
+      const targetVideo = videos.find((v) => v.id === videoId);
+      if (targetVideo) {
+        await handleShareVideo(targetVideo, btn);
+      }
+    });
+  });
 
   document.getElementById('back-from-blog-btn').addEventListener('click', () => {
     window.history.back();
