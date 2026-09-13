@@ -2616,7 +2616,6 @@ function setupBlogVideoDragDrop(videos) {
     });
   });
 }
-}
 
 function renderBlogTopicListWithDelete(videos, isGayjesus) {
   const topics = getBlogTopics(videos);
