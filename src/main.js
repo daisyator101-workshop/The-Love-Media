@@ -1007,6 +1007,66 @@ async function addVideoComment({ videoId, kind, text }) {
   }
 }
 
+async function handleShareVideo(video, buttonEl) {
+  if (!video) return;
+  const videoTitle = video.title || 'Love Media Video';
+  const originalText = buttonEl ? buttonEl.textContent : '🔗 Share';
+  const shareUrl = window.location.href;
+
+  let videoBlob = null;
+  if (video.blob instanceof Blob) {
+    videoBlob = video.blob;
+  } else if (Array.isArray(video.blob) || video.blob instanceof Uint8Array || video.blob?.buffer) {
+    videoBlob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+  }
+
+  let videoFile = null;
+  if (videoBlob) {
+    const filename = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+    try {
+      videoFile = new File([videoBlob], filename, { type: 'video/webm' });
+    } catch {}
+  }
+
+  if (navigator.share) {
+    try {
+      const shareData = {
+        title: videoTitle,
+        text: `Watch "${videoTitle}" on The Love Media!`,
+        url: shareUrl
+      };
+      if (videoFile && navigator.canShare && navigator.canShare({ files: [videoFile] })) {
+        shareData.files = [videoFile];
+      }
+      await navigator.share(shareData);
+      if (buttonEl) buttonEl.textContent = '✅ Shared!';
+      setTimeout(() => { if (buttonEl) buttonEl.textContent = originalText; }, 2000);
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+
+  if (videoBlob) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(videoBlob);
+    a.download = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (buttonEl) buttonEl.textContent = '⬇️ Downloaded!';
+    setTimeout(() => { if (buttonEl) buttonEl.textContent = originalText; }, 2000);
+  } else {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      if (buttonEl) buttonEl.textContent = '📋 Link copied!';
+      setTimeout(() => { if (buttonEl) buttonEl.textContent = originalText; }, 2000);
+    } catch {
+      window.prompt('Copy video link:', shareUrl);
+    }
+  }
+}
+
 function getBlogTopics(videos) {
   const defaultTopics = ['Welcome', 'Updates', 'Community', 'Events', 'Spotlight'];
   const existingTopics = videos
@@ -1283,6 +1343,9 @@ async function renderWelcomeVideosPage() {
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                   <strong>${video.title || 'Welcome video'}</strong>
                   <div style="display: flex; gap: 6px; align-items: center;">
+                    <button class="share-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer;">
+                      🔗 Share
+                    </button>
                     <button class="pin-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: ${video.pinned ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)'}; border: 1px solid ${video.pinned ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.2)'}; border-radius: 6px; color: ${video.pinned ? '#fbbf24' : '#fff'}; cursor: pointer;">
                       ${video.pinned ? '📌 Unpin' : '📌 Pin to top'}
                     </button>
@@ -1759,6 +1822,16 @@ async function renderWelcomeVideosPage() {
     });
   });
 
+  document.querySelectorAll('.share-video-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const videoId = btn.getAttribute('data-video-id');
+      const targetVideo = videos.find((v) => v.id === videoId);
+      if (targetVideo) {
+        await handleShareVideo(targetVideo, btn);
+      }
+    });
+  });
+
   document.querySelectorAll('.pin-video-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const videoId = btn.getAttribute('data-video-id');
@@ -2157,6 +2230,16 @@ async function renderGayjesusBlogPage() {
       });
     });
 
+    document.querySelectorAll('.share-blog-video-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const videoId = btn.getAttribute('data-video-id');
+        const targetVideo = videos.find((v) => v.id === videoId);
+        if (targetVideo) {
+          await handleShareVideo(targetVideo, btn);
+        }
+      });
+    });
+
     document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         if (window.confirm('Delete this video?')) {
@@ -2187,9 +2270,14 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
         <strong style="display:block; margin-bottom:8px;">${topic}</strong>
         ${topicVideos.map((video) => `
           <div style="margin-bottom:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.15);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <strong>${video.title || 'Blog video'}</strong>
-              ${isGayjesus ? `<button class="delete-blog-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button class="share-blog-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer;">
+                  🔗 Share
+                </button>
+                ${isGayjesus ? `<button class="delete-blog-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>` : ''}
+              </div>
             </div>
             <video id="blog-video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
             <div style="margin-top: 12px;">
