@@ -1134,6 +1134,7 @@ function renderBlogTopicList(videos) {
         <strong style="display:block; margin-bottom:8px;">${topic}</strong>
         ${topicVideos.map((video) => `
           <div style="margin-bottom:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.15);">
+            <div style="font-size:0.78rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; opacity:0.72; margin-bottom:4px;">Topic: ${topic}</div>
             <div><strong>${video.title || 'Blog video'}</strong></div>
             <div style="margin-top:4px;"><a href="${video.url}" target="_blank" rel="noreferrer">Open video</a></div>
           </div>
