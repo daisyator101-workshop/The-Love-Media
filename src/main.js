@@ -1014,17 +1014,19 @@ async function handleShareVideo(video, buttonEl) {
   const shareUrl = window.location.href;
 
   let videoBlob = null;
+  const targetMime = 'video/mp4';
+  const filename = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4`;
+
   if (video.blob instanceof Blob) {
     videoBlob = video.blob;
   } else if (Array.isArray(video.blob) || video.blob instanceof Uint8Array || video.blob?.buffer) {
-    videoBlob = new Blob([new Uint8Array(video.blob)], { type: 'video/webm' });
+    videoBlob = new Blob([new Uint8Array(video.blob)], { type: targetMime });
   }
 
   let videoFile = null;
   if (videoBlob) {
-    const filename = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
     try {
-      videoFile = new File([videoBlob], filename, { type: 'video/webm' });
+      videoFile = new File([videoBlob], filename, { type: targetMime });
     } catch {}
   }
 
@@ -1050,11 +1052,11 @@ async function handleShareVideo(video, buttonEl) {
   if (videoBlob) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(videoBlob);
-    a.download = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    if (buttonEl) buttonEl.textContent = '⬇️ Downloaded!';
+    if (buttonEl) buttonEl.textContent = '⬇️ Downloaded MP4!';
     setTimeout(() => { if (buttonEl) buttonEl.textContent = originalText; }, 2000);
   } else {
     try {
@@ -1150,10 +1152,12 @@ function openWelcomeVideosPage() {
 
 function getRecordingOptions() {
   const types = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=h264,aac',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
-    'video/webm',
-    'video/mp4'
+    'video/webm'
   ];
   for (const type of types) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) {
