@@ -253,9 +253,9 @@ function accountCount() {
   accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
   const localCodenames = new Set(accounts.map((a) => (typeof a === 'string' ? a : a?.codename)).filter(Boolean));
   if (typeof serverAccountCount === 'number') {
-    return Math.max(serverAccountCount, localCodenames.size, 1);
+    return Math.max(serverAccountCount, localCodenames.size, 0);
   }
-  return Math.max(localCodenames.size, 1);
+  return Math.max(localCodenames.size, 0);
 }
 
 async function fetchServerAccountCount() {
