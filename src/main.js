@@ -2515,6 +2515,7 @@ async function renderGayjesusBlogPage() {
 
   document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (currentProfileName.toLowerCase() !== 'gayjesus') return;
       if (window.confirm('Delete this video?')) {
         const videoId = btn.getAttribute('data-video-id');
         await deleteGayjesusBlogVideo(videoId);
