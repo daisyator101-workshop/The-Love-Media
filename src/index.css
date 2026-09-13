@@ -623,6 +623,10 @@ button, input {
   background: rgba(4, 1, 10, 0.82);
 }
 
+#private-mail-modal {
+  z-index: 40;
+}
+
 .group-chat-message-modal {
   z-index: 40;
 }

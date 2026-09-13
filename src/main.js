@@ -2602,7 +2602,12 @@ function openPrivateMail() {
     emptyMessage.textContent = 'Your private mailbox is empty.';
     mailList.appendChild(emptyMessage);
   }
-  document.getElementById('close-pm-mail-btn').addEventListener('click', () => mailModal.remove());
+  document.getElementById('close-pm-mail-btn').addEventListener('click', () => {
+    mailModal.remove();
+    if (!document.getElementById('friends-connect-modal')) {
+      openFriendsConnect();
+    }
+  });
 }
 
 function openPrivateMailMessage(friend, message, mailModal) {
@@ -2646,7 +2651,6 @@ function openFriendsConnect() {
 
   document.getElementById('root').appendChild(overlay);
   document.getElementById('open-pm-mail-btn').addEventListener('click', () => {
-    overlay.remove();
     openPrivateMail();
   });
   document.getElementById('friends-donate-btn').addEventListener('click', openDonationPopup);
@@ -4100,6 +4104,7 @@ const handleAuthHistoryBack = (event) => {
   if (window.location.hash !== '#friends-connect' && document.querySelector('#friends-connect-modal')) {
     document.querySelector('#friends-connect-modal').remove();
     document.querySelector('#group-chat-message-modal')?.remove();
+    document.querySelector('#private-mail-modal')?.remove();
   }
   if (roomRoute && !document.querySelector('.room-shell')) {
     const roomName = roomNames.find((name) => roomIdForName(name) === roomRoute[1]);
