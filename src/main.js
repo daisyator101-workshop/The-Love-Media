@@ -949,37 +949,9 @@ async function deleteWelcomeVideo(id) {
   }
 }
 
-async function togglePinBlogVideo(id) {
-  const db = await openVideoDB();
-  if (db) {
-    try {
-      const video = await new Promise((resolve) => {
-        const tx = db.transaction(VIDEO_STORE, 'readonly');
-        const store = tx.objectStore(VIDEO_STORE);
-        const req = store.get(id);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null);
-      });
-      if (video) {
-        video.pinned = !video.pinned;
-        await saveGayjesusBlogVideo(video);
-        return;
-      }
-    } catch {}
-  }
-  const memVid = memoryVideosMap.get(id);
-  if (memVid) {
-    memVid.pinned = !memVid.pinned;
-    await saveGayjesusBlogVideo(memVid);
-  }
-}
-
 async function getGayjesusBlogVideos() {
   const sortVideos = (vids) => (vids || []).sort((a, b) => {
-    const aPinned = Boolean(a.pinned);
-    const bPinned = Boolean(b.pinned);
-    if (aPinned && !bPinned) return -1;
-    if (!aPinned && bPinned) return 1;
+    if (a.sortOrder != null && b.sortOrder != null) return a.sortOrder - b.sortOrder;
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
 
@@ -1026,6 +998,13 @@ async function saveGayjesusBlogVideo(video) {
       console.warn('IndexedDB save error:', e);
     }
   }
+}
+
+async function saveGayjesusBlogVideos(videos) {
+  await Promise.all(videos.map((video, index) => {
+    video.sortOrder = index;
+    return saveGayjesusBlogVideo(video);
+  }));
 }
 
 async function deleteGayjesusBlogVideo(id) {
@@ -2092,6 +2071,9 @@ async function renderGayjesusBlogPage() {
     }
   });
 
+  // Setup drag-and-drop for video reordering
+  setupBlogVideoDragDrop(videos);
+
   // Setup event listeners
   if (isGayjesus) {
     const previewBtn = document.getElementById('preview-blog-recording-btn');
@@ -2530,14 +2512,6 @@ async function renderGayjesusBlogPage() {
     });
   });
 
-  document.querySelectorAll('.pin-blog-video-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const videoId = btn.getAttribute('data-video-id');
-      await togglePinBlogVideo(videoId);
-      await renderGayjesusBlogPage();
-    });
-  });
-
   document.querySelectorAll('.delete-blog-video-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (window.confirm('Delete this video?')) {
@@ -2557,6 +2531,93 @@ async function renderGayjesusBlogPage() {
   }
 }
 
+function setupBlogVideoDragDrop(videos) {
+  let draggedElement = null;
+  let draggedVideoId = null;
+
+  document.querySelectorAll('.blog-video-card').forEach((card) => {
+    card.addEventListener('dragstart', (e) => {
+      draggedElement = card;
+      draggedVideoId = card.getAttribute('data-video-id');
+      card.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    card.addEventListener('dragend', (e) => {
+      card.style.opacity = '1';
+      draggedElement = null;
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (card !== draggedElement) {
+        card.style.transform = 'scale(0.95)';
+        card.style.opacity = '0.7';
+      }
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      if (card !== draggedElement) {
+        card.style.transform = 'scale(1)';
+        card.style.opacity = '1';
+      }
+    });
+
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (card !== draggedElement && draggedVideoId) {
+        // Swap positions in the array
+        const draggedIdx = videos.findIndex((v) => v.id === draggedVideoId);
+        const targetIdx = videos.findIndex((v) => v.id === card.getAttribute('data-video-id'));
+        
+        if (draggedIdx >= 0 && targetIdx >= 0) {
+          [videos[draggedIdx], videos[targetIdx]] = [videos[targetIdx], videos[draggedIdx]];
+          
+          // Save the new order
+          await saveGayjesusBlogVideos(videos);
+          
+          // Re-render
+          await renderGayjesusBlogPage();
+        }
+      }
+      if (card !== draggedElement) {
+        card.style.transform = 'scale(1)';
+        card.style.opacity = '1';
+      }
+    });
+
+    // Double-click to edit topic
+    card.querySelector('span')?.addEventListener('dblclick', async (e) => {
+      const videoId = card.getAttribute('data-video-id');
+      const video = videos.find((v) => v.id === videoId);
+      if (!video) return;
+
+      const newTopic = prompt('Edit topic:', video.topic || 'General');
+      if (newTopic !== null) {
+        video.topic = newTopic.trim() || 'General';
+        await saveGayjesusBlogVideos(videos);
+        await renderGayjesusBlogPage();
+      }
+    });
+
+    // Double-click title to edit
+    card.querySelector('strong')?.addEventListener('dblclick', async (e) => {
+      const videoId = card.getAttribute('data-video-id');
+      const video = videos.find((v) => v.id === videoId);
+      if (!video) return;
+
+      const newTitle = prompt('Edit title:', video.title || '');
+      if (newTitle !== null) {
+        video.title = newTitle.trim() || 'Untitled video';
+        await saveGayjesusBlogVideos(videos);
+        await renderGayjesusBlogPage();
+      }
+    });
+  });
+}
+}
+
 function renderBlogTopicListWithDelete(videos, isGayjesus) {
   const topics = getBlogTopics(videos);
 
@@ -2564,51 +2625,141 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
     return '<p class="private-message-status">No blog videos yet.</p>';
   }
 
-  return topics.map((topic) => {
-    const topicVideos = videos.filter((video) => (video.topic || 'Welcome') === topic);
+  return `
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; width: 100%;">
+      ${videos.map((video) => `
+        <div class="blog-video-card" draggable="true" data-video-id="${video.id}" style="
+          background: linear-gradient(135deg, rgba(39, 14, 60, 0.6), rgba(87, 26, 116, 0.5));
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 12px;
+          padding: 0;
+          overflow: hidden;
+          cursor: grab;
+          transition: all 0.2s ease;
+          display: flex;
+          flex-direction: column;
+        ">
+          <!-- Video thumbnail -->
+          <div style="
+            position: relative;
+            background: #000;
+            width: 100%;
+            height: 160px;
+            overflow: hidden;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+          ">
+            <video id="blog-video-${video.id}" style="
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            " controls></video>
+          </div>
 
-    return `
-      <div class="private-message-item" style="display:block; margin-bottom:18px;">
-        <strong style="display:block; margin-bottom:8px;">${topic}</strong>
-        ${topicVideos.map((video) => `
-          <div style="margin-bottom:10px; padding-left:10px; border-left:2px solid rgba(255,255,255,0.15); ${video.pinned ? 'border: 1px solid rgba(245, 158, 11, 0.6); background: rgba(245, 158, 11, 0.08); padding: 8px; border-radius: 8px;' : ''}">
-            ${video.pinned ? `<div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">📌 PINNED TO TOP</div>` : ''}
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <strong>${video.title || 'Blog video'}</strong>
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <button class="share-blog-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer;">
-                  🔗 Share
-                </button>
-                ${isGayjesus ? `
-                  <button class="pin-blog-video-btn" data-video-id="${video.id}" type="button" style="padding: 4px 8px; font-size: 0.75rem; background: ${video.pinned ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)'}; border: 1px solid ${video.pinned ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.2)'}; border-radius: 6px; color: ${video.pinned ? '#fbbf24' : '#fff'}; cursor: pointer;">
-                    ${video.pinned ? '📌 Unpin' : '📌 Pin to top'}
-                  </button>
-                  <button class="delete-blog-video-btn" data-video-id="${video.id}" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,80,120,0.3); border: 1px solid rgba(255,80,120,0.5); border-radius: 6px; color: #ff6b9d; cursor: pointer;">Delete</button>
-                ` : ''}
-              </div>
+          <!-- Card content -->
+          <div style="padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
+            <!-- Title -->
+            <div>
+              <strong style="display: block; margin: 0; color: #fff; font-size: 0.95rem; line-height: 1.3; word-wrap: break-word;">${video.title || 'Untitled video'}</strong>
+              <span style="display: inline-block; margin-top: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; font-size: 0.7rem; font-weight: 700;">${video.topic || 'General'}</span>
             </div>
-            <video id="blog-video-${video.id}" style="width: 100%; margin-top: 8px; border-radius: 8px; background: #000; max-height: 150px; object-fit: cover; cursor: pointer;" controls></video>
-            <div style="margin-top: 12px;">
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                ${(video.comments || []).length ? (video.comments || []).map((comment) => `
-                  <div style="display: flex; justify-content: flex-start;">
-                    <div style="max-width: 85%; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: linear-gradient(135deg, rgba(255,130,180,0.22), rgba(255,255,255,0.05)); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 6px 16px rgba(0,0,0,0.12);">
-                      <div style="font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; color: #ffd4e4; margin-bottom: 4px; font-weight: 700;">${comment.author || 'Anonymous'}</div>
-                      <div style="color: #f3f3f3; font-size: 0.86rem; line-height: 1.45;">${comment.text}</div>
-                    </div>
-                  </div>
-                `).join('') : '<p class="private-message-status">No comments yet.</p>'}
-              </div>
-              <div style="display: flex; gap: 8px; margin-top: 10px;">
-                <input class="blog-comment-input" data-video-id="${video.id}" type="text" placeholder="Add a comment" style="flex: 1; min-width: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); color: #fff; padding: 9px 12px;" />
-                <button class="blog-comment-submit-btn" data-video-id="${video.id}" type="button" style="padding: 9px 12px; border-radius: 999px; background: linear-gradient(135deg, rgba(255, 128, 174, 0.35), rgba(137,109,255,0.28)); border: 1px solid rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-weight: 700;">Comment</button>
-              </div>
+
+            <!-- Comments count -->
+            <div style="font-size: 0.78rem; color: rgba(255,255,255,0.6); margin-top: auto;">
+              💬 ${(video.comments || []).length} comment${(video.comments || []).length !== 1 ? 's' : ''}
+            </div>
+
+            <!-- Actions -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+              <button class="share-blog-video-btn" data-video-id="${video.id}" type="button" style="
+                flex: 1;
+                min-width: 50px;
+                padding: 6px 8px;
+                font-size: 0.7rem;
+                background: rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.2);
+                border-radius: 6px;
+                color: #fff;
+                cursor: pointer;
+                font-weight: 600;
+              ">
+                🔗 Share
+              </button>
+              ${isGayjesus ? `
+                <button class="delete-blog-video-btn" data-video-id="${video.id}" style="
+                  flex: 1;
+                  min-width: 50px;
+                  padding: 6px 8px;
+                  font-size: 0.7rem;
+                  background: rgba(255,80,120,0.3);
+                  border: 1px solid rgba(255,80,120,0.5);
+                  border-radius: 6px;
+                  color: #ff6b9d;
+                  cursor: pointer;
+                  font-weight: 600;
+                ">
+                  🗑️ Del
+                </button>
+              ` : ''}
             </div>
           </div>
-        `).join('')}
-      </div>
-    `;
-  }).join('');
+
+          <!-- Comments preview (collapsed) -->
+          <div style="
+            padding: 0 12px 12px;
+            max-height: 80px;
+            overflow-y: auto;
+            border-top: 1px solid rgba(255,255,255,0.1);
+          ">
+            ${(video.comments || []).length ? `
+              <div style="font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-bottom: 6px; font-weight: 700;">RECENT COMMENTS</div>
+              ${(video.comments || []).slice(-2).map((comment) => `
+                <div style="
+                  padding: 6px 8px;
+                  margin-bottom: 4px;
+                  border-radius: 6px;
+                  background: rgba(255,130,180,0.1);
+                  border: 1px solid rgba(255,130,180,0.2);
+                  font-size: 0.75rem;
+                  color: #f0d6ff;
+                ">
+                  <div style="font-weight: 700; color: #ffd4e4; margin-bottom: 2px;">${comment.author || 'Anon'}</div>
+                  <div style="color: #e9dff6; line-height: 1.3;">${comment.text.substring(0, 60)}${comment.text.length > 60 ? '...' : ''}</div>
+                </div>
+              `).join('')}
+            ` : `
+              <p style="margin: 0; font-size: 0.75rem; color: rgba(255,255,255,0.4); text-align: center; padding: 4px 0;">No comments yet</p>
+            `}
+          </div>
+
+          <!-- Add comment input -->
+          <div style="padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 6px;">
+            <input class="blog-comment-input" data-video-id="${video.id}" type="text" placeholder="Comment..." style="
+              flex: 1;
+              min-width: 0;
+              border-radius: 6px;
+              border: 1px solid rgba(255,255,255,0.12);
+              background: rgba(255,255,255,0.02);
+              color: #fff;
+              padding: 6px 8px;
+              font-size: 0.75rem;
+            " />
+            <button class="blog-comment-submit-btn" data-video-id="${video.id}" type="button" style="
+              padding: 6px 8px;
+              border-radius: 6px;
+              background: rgba(255, 128, 174, 0.3);
+              border: 1px solid rgba(255, 128, 174, 0.5);
+              color: #ff8eb3;
+              cursor: pointer;
+              font-weight: 700;
+              font-size: 0.75rem;
+            ">
+              ✓
+            </button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function openGayjesusBlogModal() {
