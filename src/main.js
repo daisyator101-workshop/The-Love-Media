@@ -28,8 +28,17 @@ function getProfileKey(name) {
 
 function loadProfileForUser(name) {
   try {
-    const raw = localStorage.getItem(getProfileKey(name)) || localStorage.getItem('the-love-media-profile');
-    return raw ? JSON.parse(raw) : null;
+    const key = getProfileKey(name);
+    const userRaw = localStorage.getItem(key);
+    if (userRaw) return JSON.parse(userRaw);
+    const generalRaw = localStorage.getItem('the-love-media-profile');
+    if (generalRaw) {
+      const parsed = JSON.parse(generalRaw);
+      if (!parsed.name || String(parsed.name).toLowerCase().trim() === String(name || '').toLowerCase().trim()) {
+        return parsed;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -41,6 +50,15 @@ function saveProfileForUser(name, data) {
     localStorage.setItem(getProfileKey(name), payload);
     localStorage.setItem('the-love-media-profile', payload);
   } catch {}
+}
+
+function syncProfileMemory(name = currentProfileName) {
+  const saved = loadProfileForUser(name);
+  if (saved) {
+    if (typeof saved.bio === 'string') currentProfileBio = saved.bio;
+    if (Array.isArray(saved.statuses)) currentProfileStatuses = saved.statuses;
+    if (typeof saved.connectionStatus === 'string') currentConnectionStatus = saved.connectionStatus;
+  }
 }
 
 let initialProfileData = loadProfileForUser(currentProfileName);
@@ -569,9 +587,15 @@ function renderLoginPage() {
       currentProfileName = result.codename;
       currentSessionToken = result.sessionToken || '';
       const savedUserProf = loadProfileForUser(currentProfileName);
-      currentProfileBio = result.profile?.bio || savedUserProf?.bio || 'A little about you goes here.';
-      currentProfileStatuses = result.profile?.statuses || savedUserProf?.statuses || [];
-      currentConnectionStatus = result.profile?.connectionStatus || savedUserProf?.connectionStatus || '';
+      currentProfileBio = (result.profile && typeof result.profile.bio === 'string' && result.profile.bio.length > 0)
+        ? result.profile.bio
+        : (savedUserProf?.bio || 'A little about you goes here.');
+      currentProfileStatuses = (result.profile && Array.isArray(result.profile.statuses) && result.profile.statuses.length > 0)
+        ? result.profile.statuses
+        : (savedUserProf?.statuses || []);
+      currentConnectionStatus = (result.profile && typeof result.profile.connectionStatus === 'string' && result.profile.connectionStatus.length > 0)
+        ? result.profile.connectionStatus
+        : (savedUserProf?.connectionStatus || '');
       saveProfileForUser(currentProfileName, {
         name: currentProfileName,
         bio: currentProfileBio,
@@ -3693,6 +3717,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 }
 
 function renderChatroomWorkspace(profileToView = null) {
+  syncProfileMemory(currentProfileName);
   connectRoomPresence();
   app.innerHTML = `
     <div class="workspace-shell">
@@ -3907,6 +3932,7 @@ function renderChatroomWorkspace(profileToView = null) {
   editProfileItem.addEventListener('click', (event) => {
     event.stopPropagation();
     profileMenu.classList.add('hidden');
+    syncProfileMemory(currentProfileName);
     profileNameInput.value = currentProfileName;
     profileBioInput.value = currentProfileBio;
     connectionStatusInput.value = currentConnectionStatus;
