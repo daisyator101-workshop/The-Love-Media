@@ -1972,22 +1972,22 @@ async function renderGayjesusBlogPage() {
   };
 
   app.innerHTML = `
-    <div class="workspace-shell">
-      <div class="workspace-card">
-        <div class="brand-row">
+    <div class="workspace-shell" style="padding: 0; margin: 0;">
+      <div class="workspace-card" style="padding: 20px 24px; border-radius: 0; border: none; background: linear-gradient(180deg, rgba(17, 30, 38, 0.92), rgba(12, 22, 29, 0.96)); display: flex; flex-direction: column; gap: 0;">
+        <div class="brand-row" style="margin-bottom: 20px;">
           <p class="eyebrow">Gayjesus Blog</p>
           <div class="header-actions">
             <button class="secondary-btn header-pill-btn" id="back-from-blog-full-btn">Back</button>
           </div>
         </div>
-        <div style="display: flex; gap: 24px; margin-bottom: 24px;">
-          <div style="flex: 1;">
-            <h1>Blog & topic videos</h1>
+        <div style="display: flex; gap: 24px; flex: 1; overflow-y: auto;">
+          <div style="flex: 1; min-width: 0;">
+            <h1 style="margin-top: 0;">Blog & topic videos</h1>
             <p>Church updates, lifestyle, advice, and community topics.</p>
 
           </div>
-          <div style="width: 320px; flex-shrink: 0;">
-            <div class="church-feature-card" style="margin-top: 0; padding: 14px; border-radius: 14px; background: rgba(148, 102, 211, 0.15); border: 1px solid rgba(148, 102, 211, 0.3); position: sticky; top: 100px;">
+          <div style="width: 340px; flex-shrink: 0;">
+            <div class="church-feature-card" style="margin-top: 0; padding: 14px; border-radius: 14px; background: rgba(148, 102, 211, 0.15); border: 1px solid rgba(148, 102, 211, 0.3); position: sticky; top: 0;">
               <p style="margin: 0 0 6px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #d4a5ff;">Church where I reside</p>
               <h4 style="margin: 0 0 4px;">Phoenix Community Church UCC</h4>
               <p style="margin: 0 0 4px; color: #f0d6ff; font-size: 0.9rem;">Progressive and inclusive Open and Affirming congregation in Kalamazoo, Michigan.</p>
@@ -2061,8 +2061,8 @@ async function renderGayjesusBlogPage() {
         </div>
         ` : ''}
 
-        <div style="margin-top: 20px;">
-          <h3>Blog videos by topic (${videos.length})</h3>
+        <div style="margin-top: 20px; flex: 1; overflow-y: auto; min-height: 0;">
+          <h3 style="margin-top: 0;">Blog videos by topic (${videos.length})</h3>
           <div class="friends-list" id="gayjesus-blog-list">
             ${renderBlogTopicListWithDelete(videos, isGayjesus)}
           </div>
