@@ -2639,6 +2639,12 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
           display: flex;
           flex-direction: column;
         ">
+          <!-- Title -->
+          <div style="padding: 12px 12px 8px;">
+            <strong style="display: block; margin: 0; color: #fff; font-size: 0.95rem; line-height: 1.3; word-wrap: break-word;">${video.title || 'Untitled video'}</strong>
+            <span style="display: inline-block; margin-top: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; font-size: 0.7rem; font-weight: 700;">${video.topic || 'General'}</span>
+          </div>
+
           <!-- Video thumbnail -->
           <div style="
             position: relative;
@@ -2657,12 +2663,6 @@ function renderBlogTopicListWithDelete(videos, isGayjesus) {
 
           <!-- Card content -->
           <div style="padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
-            <!-- Title -->
-            <div>
-              <strong style="display: block; margin: 0; color: #fff; font-size: 0.95rem; line-height: 1.3; word-wrap: break-word;">${video.title || 'Untitled video'}</strong>
-              <span style="display: inline-block; margin-top: 4px; padding: 3px 8px; border-radius: 4px; background: rgba(148, 102, 211, 0.3); color: #d4a5ff; font-size: 0.7rem; font-weight: 700;">${video.topic || 'General'}</span>
-            </div>
-
             <!-- Comments count -->
             <div style="font-size: 0.78rem; color: rgba(255,255,255,0.6); margin-top: auto;">
               💬 ${(video.comments || []).length} comment${(video.comments || []).length !== 1 ? 's' : ''}
