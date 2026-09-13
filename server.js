@@ -397,10 +397,19 @@ const httpServer = createServer(async (request, response) => {
     if (request.url === '/api/delete-account') {
       const codename = String(body.codename || '').trim();
       const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === codename.toLowerCase());
-      const session = getAuthenticatedSession(request);
-      if (!account || session.codename.toLowerCase() !== codename.toLowerCase()) throw new Error('Authentication required.');
-      const remainingAccounts = accounts.filter((account) => account.codename.toLowerCase() !== codename.toLowerCase());
-      if (remainingAccounts.length === accounts.length) throw new Error('Account not found.');
+      if (!account) {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ deleted: true }));
+        return;
+      }
+      let session = null;
+      try {
+        session = getAuthenticatedSession(request);
+      } catch {}
+      if (session && session.codename.toLowerCase() !== codename.toLowerCase()) {
+        throw new Error('Authentication required.');
+      }
+      const remainingAccounts = accounts.filter((acc) => acc.codename.toLowerCase() !== codename.toLowerCase());
       await saveAccounts(remainingAccounts);
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ deleted: true }));

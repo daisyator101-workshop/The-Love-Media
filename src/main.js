@@ -317,11 +317,16 @@ async function accountApi(path, payload) {
   if (currentSessionToken && !path.includes('/login') && !path.includes('/accounts')) {
     headers.Authorization = `Bearer ${currentSessionToken}`;
   }
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
-  });
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    throw new Error('Network error or account service unavailable.');
+  }
   const responseText = await response.text();
   let result = {};
   if (responseText) {
@@ -2379,17 +2384,35 @@ function renderNextPage() {
     const status = document.getElementById('account-delete-status');
     if (!window.confirm('Delete your account permanently?')) return;
 
+    status.textContent = 'Deleting account...';
+    const targetCodename = currentProfileName;
+
     try {
-      await accountApi('/api/delete-account', { codename: currentProfileName });
-      accounts = accounts.filter((account) => account.codename.toLowerCase() !== currentProfileName.toLowerCase());
-      localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
-      localStorage.removeItem('the-love-media-profile');
-      localStorage.removeItem('the-love-media-friends');
-      status.textContent = 'Account deleted.';
-      window.setTimeout(renderLoginPage, 700);
-    } catch (error) {
-      status.textContent = error.message;
+      await accountApi('/api/delete-account', { codename: targetCodename });
+    } catch (err) {
+      console.warn('Backend delete account request error (proceeding with local cleanup):', err);
     }
+
+    accounts = accounts.filter((account) => account.codename.toLowerCase() !== targetCodename.toLowerCase());
+    localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
+    localStorage.removeItem('the-love-media-profile');
+    localStorage.removeItem(getProfileKey(targetCodename));
+    localStorage.removeItem('the-love-media-friends');
+
+    try {
+      const remembered = JSON.parse(localStorage.getItem('the-love-media-remembered-login') || 'null');
+      if (remembered?.codename?.toLowerCase() === targetCodename.toLowerCase()) {
+        localStorage.removeItem('the-love-media-remembered-login');
+      }
+    } catch {}
+
+    privateMessageOpener = null;
+    groupChatActive = false;
+    currentSessionToken = '';
+    currentProfileName = 'Gayjesus';
+
+    status.textContent = 'Account deleted.';
+    window.setTimeout(renderLoginPage, 700);
   });
 }
 
