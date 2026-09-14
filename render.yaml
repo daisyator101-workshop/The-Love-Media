@@ -19,8 +19,9 @@ services:
           name: the-love-media-db
           property: connectionString
 
-  - type: static_site
+  - type: web
     name: the-love-media
+    runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
