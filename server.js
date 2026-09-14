@@ -45,7 +45,8 @@ async function readEnvFiles() {
   }
 
   for (const [key, value] of loadedValues) {
-    process.env[key] = value;
+    // Render-injected environment variables must take precedence over local fallback files.
+    if (!process.env[key]) process.env[key] = value;
   }
 }
 
