@@ -199,6 +199,12 @@ function connectRoomPresence(roomName = null) {
   roomPresenceSocket.onmessage = ({ data }) => {
     const message = JSON.parse(data);
     if (message.type === 'chat-message') {
+      if (activeRoomChatId && message.sender) {
+        roomMembers[activeRoomChatId] = [
+          ...new Set([...(roomMembers[activeRoomChatId] || []), message.sender])
+        ];
+        updateActiveRoomMates();
+      }
       groupChatMessageHandler?.(message.sender, message.text);
       roomChatMessageHandler?.(message.sender, message.text);
       return;
