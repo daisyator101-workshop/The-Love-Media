@@ -4702,12 +4702,28 @@ function renderChatroomWorkspace(profileToView = null) {
     event.preventDefault();
     openOwnProfileEditor();
   };
-  editProfileItem.addEventListener('pointerdown', handleEditProfile, { passive: false });
+  let profileActionHandledAt = 0;
+  const handleEditProfileOnce = (event) => {
+    if (Date.now() - profileActionHandledAt < 400) return;
+    profileActionHandledAt = Date.now();
+    handleEditProfile(event);
+  };
+  editProfileItem.addEventListener('pointerup', handleEditProfileOnce);
+  editProfileItem.addEventListener('click', handleEditProfileOnce);
 
-  suggestionsBtn.addEventListener('click', (event) => {
+  const openSuggestions = (event) => {
     event.stopPropagation();
+    event.preventDefault();
     suggestionsModal.classList.remove('hidden');
-  });
+  };
+  let suggestionsHandledAt = 0;
+  const openSuggestionsOnce = (event) => {
+    if (Date.now() - suggestionsHandledAt < 400) return;
+    suggestionsHandledAt = Date.now();
+    openSuggestions(event);
+  };
+  suggestionsBtn.addEventListener('pointerup', openSuggestionsOnce);
+  suggestionsBtn.addEventListener('click', openSuggestionsOnce);
 
   vibeScoreInput.addEventListener('input', () => {
     communityVibeScore = Number(vibeScoreInput.value);
