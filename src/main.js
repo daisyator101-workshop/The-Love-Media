@@ -2149,6 +2149,8 @@ async function renderGayjesusBlogPage() {
             <button class="small-btn" id="stop-preview-blog-btn" type="button" style="display: none; background: rgba(255,255,255,0.15);">Stop preview</button>
             <button class="small-btn" id="start-blog-recording-btn" type="button" style="background: linear-gradient(135deg, #e11d48, #be123c);">🔴 Start recording</button>
             <button class="small-btn" id="stop-blog-recording-btn" type="button" style="display: none; background: #dc2626;">⏹️ Stop recording</button>
+            <label class="small-btn" for="blog-video-upload" style="cursor: pointer;">Upload phone video</label>
+            <input id="blog-video-upload" type="file" accept="video/*" hidden />
           </div>
           <p class="private-message-status" id="blog-recording-status" aria-live="polite" style="margin-top: 10px; font-weight: 600;"></p>
         </div>
@@ -2201,10 +2203,39 @@ async function renderGayjesusBlogPage() {
     const deviceSelect = document.getElementById('blog-camera-device-select');
     const titleInput = document.getElementById('blog-video-title');
     const topicInput = document.getElementById('blog-custom-topic');
+    const uploadInput = document.getElementById('blog-video-upload');
     const cameraRadio = document.getElementById('blog-recording-mode-camera');
     const screenRadio = document.getElementById('blog-recording-mode-screen');
     const bothRadio = document.getElementById('blog-recording-mode-both');
     let currentRecordingMode = 'camera';
+
+    uploadInput.addEventListener('change', async () => {
+      const file = uploadInput.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('video/')) {
+        status.textContent = 'Choose a video file.';
+        uploadInput.value = '';
+        return;
+      }
+      const title = titleInput.value.trim() || file.name.replace(/\.[^.]+$/, '') || 'Blog video';
+      const topic = topicInput.value.trim() || 'Updates';
+      status.textContent = 'Posting uploaded video...';
+      await saveGayjesusBlogVideo({
+        id: crypto.randomUUID(),
+        title,
+        topic,
+        blob: file,
+        timestamp: Date.now(),
+        type: 'upload',
+        comments: [],
+        kind: 'blog'
+      });
+      status.textContent = 'Video posted successfully!';
+      uploadInput.value = '';
+      titleInput.value = '';
+      topicInput.value = '';
+      await renderGayjesusBlogPage();
+    });
 
   const populateDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
