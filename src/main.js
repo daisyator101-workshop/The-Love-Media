@@ -81,7 +81,9 @@ let pendingRoomChatMessages = [];
 let accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
 let privateMail = JSON.parse(localStorage.getItem('the-love-media-private-mail') || '{}');
 const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
-const maxPrivateMessages = 4;
+function getMaxPrivateMessages() {
+  return window.matchMedia('(max-width: 600px)').matches ? 1 : 4;
+}
 let communityVibeScore = Number(localStorage.getItem('the-love-media-vibe-score') || 100);
 const roomNames = [
   'ALL AROUND MAYHEM',
@@ -3872,6 +3874,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const cameraStatus = document.getElementById('private-camera-status');
     const messageThread = document.getElementById('private-message-thread');
     const isFriendOnline = new Set([currentProfileName, ...(Object.values(roomMembers).flat())]).has(name);
+    const maxPrivateMessages = getMaxPrivateMessages();
     const threadMessages = getPrivateThread(name).slice(-maxPrivateMessages);
 
     const addPrivateMessage = (sender, message, ownMessage = false) => {
