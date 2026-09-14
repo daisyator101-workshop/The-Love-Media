@@ -368,7 +368,8 @@ const httpServer = createServer(async (request, response) => {
           bio: String(body.profile?.bio || ''),
           statuses: Array.isArray(body.profile?.statuses) ? body.profile.statuses : [],
           connectionStatus: String(body.profile?.connectionStatus || '')
-        }
+        },
+        privateMail: []
       });
       await saveAccounts(accounts);
       response.writeHead(201, { 'Content-Type': 'application/json' });
@@ -415,6 +416,13 @@ const httpServer = createServer(async (request, response) => {
       response.end(JSON.stringify({ profile: account.profile }));
       return;
     }
+    if (request.url === '/api/private-mail') {
+      const session = getAuthenticatedSession(request);
+      const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === session.codename.toLowerCase());
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ messages: Array.isArray(account?.privateMail) ? account.privateMail : [] }));
+      return;
+    }
     if (request.url === '/api/delete-account') {
       const codename = String(body.codename || '').trim();
       const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === codename.toLowerCase());
@@ -451,7 +459,7 @@ server.on('connection', (socket) => {
   let peerId = null;
   let authenticatedSession = null;
 
-  socket.on('message', (rawMessage) => {
+  socket.on('message', async (rawMessage) => {
     let message;
     try {
       message = JSON.parse(rawMessage.toString());
@@ -527,8 +535,22 @@ server.on('connection', (socket) => {
 
     if (message.type === 'private-message') {
       const privateRoomId = String(message.room || '').trim();
+      const recipient = String(message.recipient || '').trim();
       const text = String(message.text || '').trim();
-      if (!privateRoomId || !text || privateRoomId !== socket.privateMessageRoomId) return;
+      if (!privateRoomId || !recipient || !text || privateRoomId !== socket.privateMessageRoomId) return;
+      const accounts = await readAccounts();
+      const recipientAccount = accounts.find((account) => account.codename.toLowerCase() === recipient.toLowerCase());
+      if (recipientAccount) {
+        const privateMail = Array.isArray(recipientAccount.privateMail) ? recipientAccount.privateMail : [];
+        privateMail.push({
+          id: randomBytes(16).toString('hex'),
+          sender: authenticatedSession.codename,
+          text,
+          createdAt: Date.now()
+        });
+        recipientAccount.privateMail = privateMail.slice(-100);
+        await saveAccounts(accounts);
+      }
       const privateMessage = JSON.stringify({
         type: 'private-message',
         sender: authenticatedSession.codename,

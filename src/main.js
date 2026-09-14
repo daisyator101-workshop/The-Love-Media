@@ -297,6 +297,22 @@ function addPrivateMailMessage(friend, sender, text, options = {}) {
   savePrivateMail();
 }
 
+async function syncPrivateMailFromServer() {
+  try {
+    const result = await accountApi('/api/private-mail', {});
+    for (const message of result.messages || []) {
+      if (!message.sender || !message.text) continue;
+      if (!privateMail[message.sender]) privateMail[message.sender] = [];
+      if (!privateMail[message.sender].some((savedMessage) => savedMessage.id === message.id)) {
+        privateMail[message.sender].push(message);
+      }
+    }
+    savePrivateMail();
+  } catch {
+    return;
+  }
+}
+
 let serverAccountCount = null;
 
 function accountCountLabel() {
@@ -645,6 +661,7 @@ function renderLoginPage() {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
       currentSessionToken = result.sessionToken || '';
+      await syncPrivateMailFromServer();
       const savedUserProf = loadProfileForUser(currentProfileName);
       currentProfileBio = (result.profile && typeof result.profile.bio === 'string' && result.profile.bio.length > 0)
         ? result.profile.bio
@@ -3032,7 +3049,7 @@ function openPrivateMail() {
   const existingMail = document.getElementById('private-mail-modal');
   if (existingMail) existingMail.remove();
 
-  const onlinePeople = new Set([currentProfileName]);
+  const onlinePeople = new Set([currentProfileName, ...Object.values(roomMembers).flat()]);
   const mailModal = document.createElement('div');
   mailModal.className = 'friends-connect-modal';
   mailModal.id = 'private-mail-modal';
@@ -3070,7 +3087,7 @@ function openPrivateMail() {
   });
 
   const mailList = document.getElementById('pm-mail-list');
-  [...new Set([...friends, 'Gayjesus'])].forEach((friend) => {
+  [...new Set([...friends, 'Gayjesus', ...Object.keys(privateMail)])].forEach((friend) => {
     const isOnline = onlinePeople.has(friend);
     cleanPrivateMail(friend, isOnline);
     if (!privateMail[friend]?.length) return;
@@ -3166,7 +3183,7 @@ function openFriendsConnect() {
     openGroupChatMessagePopup();
   });
   const friendsList = document.getElementById('friends-connect-list');
-  const onlinePeople = new Set([currentProfileName]);
+  const onlinePeople = new Set([currentProfileName, ...Object.values(roomMembers).flat()]);
   if (friends.length === 0) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'profile-preview-label';
@@ -3935,13 +3952,14 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         privateMessageSocket.send(JSON.stringify({ type: 'auth', sessionToken: currentSessionToken }));
         privateMessageSocket.send(JSON.stringify({ type: 'private-message-join', room: privateMessageRoom }));
         for (const text of pendingPrivateMessages.splice(0)) {
-          privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, text }));
+          privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, recipient: name, text }));
         }
       };
       privateMessageSocket.onmessage = ({ data }) => {
         const incoming = JSON.parse(data);
         if (incoming.type === 'private-message' && incoming.sender !== currentProfileName) {
           appendThreadMessage(incoming.sender, incoming.text, false);
+          addPrivateMailMessage(incoming.sender, incoming.sender, incoming.text);
         }
       };
     } catch {
@@ -4130,7 +4148,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       }
       if (!appendThreadMessage(currentProfileName, message, true)) return;
       if (privateMessageSocket?.readyState === WebSocket.OPEN) {
-        privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, text: message }));
+        privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, recipient: name, text: message }));
       } else {
         pendingPrivateMessages.push(message);
         status.textContent = 'Sending private message...';
