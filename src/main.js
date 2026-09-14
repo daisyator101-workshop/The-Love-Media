@@ -4498,10 +4498,8 @@ function renderChatroomWorkspace(profileToView = null) {
               <p id="profile-bio-display">A little about you goes here.</p>
             </div>
             <div class="profile-action">
-              <button class="secondary-btn" id="profile-btn">Profile</button>
-              <div class="profile-menu hidden" id="profile-menu">
-                <button class="profile-menu-item" id="edit-profile-item">Edit profile</button>
-              </div>
+              <button class="secondary-btn" id="profile-btn" type="button">Profile</button>
+              <button class="secondary-btn" id="edit-profile-item" type="button">Edit profile</button>
             </div>
             <button class="secondary-btn" id="suggestions-btn">Suggestions and vibe rating</button>
             <button class="primary-btn" id="back-to-main-btn">Back to main</button>
@@ -4681,14 +4679,7 @@ function renderChatroomWorkspace(profileToView = null) {
     profileEditorModal.classList.remove('hidden');
   }
 
-  profileBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    profileMenu.classList.toggle('hidden');
-  });
-
-  editProfileItem.addEventListener('click', (event) => {
-    event.stopPropagation();
-    profileMenu.classList.add('hidden');
+  const openOwnProfileEditor = () => {
     syncProfileMemory(currentProfileName);
     profileNameInput.value = currentProfileName;
     profileBioInput.value = currentProfileBio;
@@ -4701,6 +4692,17 @@ function renderChatroomWorkspace(profileToView = null) {
     });
     document.getElementById('save-profile-btn').classList.remove('hidden');
     profileEditorModal.classList.remove('hidden');
+  };
+
+  profileBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openOwnProfileEditor();
+  });
+
+  editProfileItem.addEventListener('click', (event) => {
+    event.stopPropagation();
+    profileMenu?.classList.add('hidden');
+    openOwnProfileEditor();
   });
 
   suggestionsBtn.addEventListener('click', (event) => {
