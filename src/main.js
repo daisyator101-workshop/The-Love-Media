@@ -84,6 +84,23 @@ const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
 function getMaxPrivateMessages() {
   return window.matchMedia('(max-width: 600px)').matches ? 1 : 4;
 }
+
+function getPrivateMessageContactsKey() {
+  return `the-love-media-private-message-contacts-${String(currentProfileName || '').toLowerCase().trim()}`;
+}
+
+function getPrivateMessageContacts() {
+  try {
+    const contacts = JSON.parse(localStorage.getItem(getPrivateMessageContactsKey()) || '[]');
+    return new Set(Array.isArray(contacts) ? contacts : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function savePrivateMessageContacts(contacts) {
+  localStorage.setItem(getPrivateMessageContactsKey(), JSON.stringify([...contacts]));
+}
 let communityVibeScore = Number(localStorage.getItem('the-love-media-vibe-score') || 100);
 const roomNames = [
   'ALL AROUND MAYHEM',
@@ -3874,8 +3891,10 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const cameraStatus = document.getElementById('private-camera-status');
     const messageThread = document.getElementById('private-message-thread');
     const isFriendOnline = new Set([currentProfileName, ...(Object.values(roomMembers).flat())]).has(name);
-    const maxPrivateMessages = getMaxPrivateMessages();
-    const threadMessages = getPrivateThread(name).slice(-maxPrivateMessages);
+    const maxPrivateContacts = getMaxPrivateMessages();
+    const normalizedName = String(name || '').toLowerCase().trim();
+    const privateMessageContacts = getPrivateMessageContacts();
+    const threadMessages = getPrivateThread(name);
 
     const addPrivateMessage = (sender, message, ownMessage = false) => {
       const messageBubble = document.createElement('div');
@@ -3898,7 +3917,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     }
 
     const appendThreadMessage = (sender, message, ownMessage = false) => {
-      if (threadMessages.length >= maxPrivateMessages) return false;
       threadMessages.push({ id: crypto.randomUUID(), sender, text: message, ownMessage, createdAt: Date.now() });
       savePrivateThread(name, threadMessages);
       addPrivateMessage(sender, message, ownMessage);
@@ -4101,9 +4119,14 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       const status = document.getElementById('private-message-status');
       const message = input.value.trim();
       if (!message) return;
-      if (threadMessages.length >= maxPrivateMessages) {
-        status.textContent = `Private messages are limited to ${maxPrivateMessages} at a time.`;
+      if (!privateMessageContacts.has(normalizedName) && threadMessages.length === 0
+        && privateMessageContacts.size >= maxPrivateContacts) {
+        status.textContent = `You can private message up to ${maxPrivateContacts} different codename${maxPrivateContacts === 1 ? '' : 's'} on this device.`;
         return;
+      }
+      if (!privateMessageContacts.has(normalizedName)) {
+        privateMessageContacts.add(normalizedName);
+        savePrivateMessageContacts(privateMessageContacts);
       }
       if (!appendThreadMessage(currentProfileName, message, true)) return;
       if (privateMessageSocket?.readyState === WebSocket.OPEN) {
@@ -4113,9 +4136,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         status.textContent = 'Sending private message...';
       }
       input.value = '';
-      status.textContent = threadMessages.length >= maxPrivateMessages
-        ? `Private messages are limited to ${maxPrivateMessages} at a time.`
-        : '';
+      status.textContent = '';
     };
 
     document.getElementById('send-private-message-btn').addEventListener('click', sendPrivateMessage);
