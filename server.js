@@ -9,6 +9,7 @@ import pg from 'pg';
 const { Pool } = pg;
 
 async function readEnvFiles() {
+  if (process.env.NODE_ENV === 'production') return;
   const envPaths = [
     new URL('./.vscode/.env.txt', import.meta.url),
     new URL('./.env.txt', import.meta.url),
@@ -80,6 +81,15 @@ const databasePool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 let databaseReady = false;
+
+if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+  try {
+    const databaseUrl = new URL(process.env.DATABASE_URL);
+    console.log(`Database target: ${databaseUrl.hostname}/${databaseUrl.pathname.slice(1)}`);
+  } catch {
+    console.warn('DATABASE_URL is not a valid PostgreSQL URL.');
+  }
+}
 
 function getClientAddress(request) {
   return request.socket.remoteAddress || 'unknown';
