@@ -3025,8 +3025,6 @@ function renderNextPage() {
         <button class="secondary-btn" id="welcome-videos-btn">Welcome & updates videos</button>
         <button class="secondary-btn" id="gayjesus-blog-btn">Gayjesus blog</button>
         <button class="secondary-btn" id="back-btn">Back to login</button>
-        <button class="danger-btn" id="delete-account-btn">Delete account</button>
-        <p class="form-status" id="account-delete-status" aria-live="polite"></p>
       </div>
     </div>
   `;
@@ -3038,8 +3036,11 @@ function renderNextPage() {
     event.preventDefault();
     window.history.back();
   });
-  document.getElementById('delete-account-btn').addEventListener('click', async () => {
-    const status = document.getElementById('account-delete-status');
+}
+
+function setupDeleteAccountAction(buttonId, statusId) {
+  document.getElementById(buttonId).addEventListener('click', async () => {
+    const status = document.getElementById(statusId);
     if (!window.confirm('Delete your account permanently?')) return;
 
     status.textContent = 'Deleting account...';
@@ -4503,6 +4504,8 @@ function renderChatroomWorkspace(profileToView = null) {
               <button class="secondary-btn" id="edit-profile-item" type="button" style="touch-action: manipulation; position: relative; z-index: 25;">Edit profile</button>
             </div>
             <button class="secondary-btn" id="suggestions-btn">Suggestions and vibe rating</button>
+            <button class="danger-btn" id="delete-account-btn" type="button">Delete account</button>
+            <p class="form-status" id="account-delete-status" aria-live="polite"></p>
             <button class="primary-btn" id="back-to-main-btn">Back to main</button>
           </div>
           <div class="workspace-main">
@@ -4646,6 +4649,7 @@ function renderChatroomWorkspace(profileToView = null) {
   document.getElementById('workspace-gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('workspace-friends-connect-btn').addEventListener('click', openFriendsConnectPage);
   document.getElementById('workspace-donate-btn').addEventListener('click', openDonationPopup);
+  setupDeleteAccountAction('delete-account-btn', 'account-delete-status');
   const editProfileItem = document.getElementById('edit-profile-item');
   const suggestionsBtn = document.getElementById('suggestions-btn');
   const suggestionsModal = document.getElementById('suggestions-modal');
