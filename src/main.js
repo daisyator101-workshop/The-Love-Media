@@ -4500,7 +4500,7 @@ function renderChatroomWorkspace(profileToView = null) {
               <p id="profile-bio-display">A little about you goes here.</p>
             </div>
             <div class="profile-action">
-              <button class="secondary-btn" id="edit-profile-item" type="button">Edit profile</button>
+              <button class="secondary-btn" id="edit-profile-item" type="button" style="touch-action: manipulation; position: relative; z-index: 25;">Edit profile</button>
             </div>
             <button class="secondary-btn" id="suggestions-btn">Suggestions and vibe rating</button>
             <button class="primary-btn" id="back-to-main-btn">Back to main</button>
@@ -4692,6 +4692,8 @@ function renderChatroomWorkspace(profileToView = null) {
     profileNameInput.disabled = true;
     document.getElementById('save-profile-btn').classList.remove('hidden');
     profileEditorModal.classList.remove('hidden');
+    profileEditorModal.style.zIndex = '100';
+    profileNameInput.focus({ preventScroll: true });
   };
 
   const handleEditProfile = (event) => {
@@ -4699,8 +4701,7 @@ function renderChatroomWorkspace(profileToView = null) {
     event.preventDefault();
     openOwnProfileEditor();
   };
-  editProfileItem.addEventListener('pointerup', handleEditProfile);
-  editProfileItem.addEventListener('click', handleEditProfile);
+  editProfileItem.addEventListener('pointerdown', handleEditProfile, { passive: false });
 
   suggestionsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
