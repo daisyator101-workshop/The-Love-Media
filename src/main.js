@@ -4594,8 +4594,8 @@ function renderChatroomWorkspace(profileToView = null) {
             </div>
           </div>
         </div>
-        <div class="profile-editor-modal hidden" id="profile-editor-modal">
-          <div class="profile-editor-card">
+        <div class="profile-editor-modal hidden" id="profile-editor-modal" style="z-index: 100; overflow-y: auto;">
+          <div class="profile-editor-card" style="position: relative; z-index: 101; width: min(100%, 360px); max-height: calc(100vh - 40px); overflow-y: auto;">
             <h3>Edit profile</h3>
             <div class="form-group">
               <label for="profile-name-input">Codename</label>
