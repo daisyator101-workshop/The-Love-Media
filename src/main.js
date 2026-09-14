@@ -4691,10 +4691,13 @@ function renderChatroomWorkspace(profileToView = null) {
     profileEditorModal.classList.remove('hidden');
   };
 
-  editProfileItem.addEventListener('click', (event) => {
+  const handleEditProfile = (event) => {
     event.stopPropagation();
+    event.preventDefault();
     openOwnProfileEditor();
-  });
+  };
+  editProfileItem.addEventListener('pointerup', handleEditProfile);
+  editProfileItem.addEventListener('click', handleEditProfile);
 
   suggestionsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
