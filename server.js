@@ -126,17 +126,20 @@ function getPresenceCounts() {
 function getPresenceMembers() {
   return Object.fromEntries([...presenceRooms].map(([roomId, sockets]) => [
     roomId,
-    [...sockets]
+    [...new Set([...sockets]
       .map((socket) => socket.authenticatedSession?.codename)
-      .filter(Boolean)
+      .filter(Boolean))]
   ]));
+}
+
+function getPresenceState() {
+  return { counts: getPresenceCounts(), members: getPresenceMembers() };
 }
 
 function broadcastPresenceCounts() {
   const message = JSON.stringify({
     type: 'room-counts',
-    counts: getPresenceCounts(),
-    members: getPresenceMembers()
+    ...getPresenceState()
   });
   for (const client of server.clients) {
     if (client.readyState === 1) client.send(message);
@@ -459,7 +462,7 @@ server.on('connection', (socket) => {
     }
 
     if (message.type === 'presence-subscribe') {
-      socket.send(JSON.stringify({ type: 'room-counts', counts: getPresenceCounts(), members: getPresenceMembers() }));
+      socket.send(JSON.stringify({ type: 'room-counts', ...getPresenceState() }));
       return;
     }
 
@@ -471,6 +474,7 @@ server.on('connection', (socket) => {
         presenceRooms.get(presenceRoom).add(socket);
         socket.presenceRoomId = presenceRoom;
         broadcastPresenceCounts();
+        socket.send(JSON.stringify({ type: 'presence-joined', room: presenceRoom, ...getPresenceState() }));
       }
       return;
     }

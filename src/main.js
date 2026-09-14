@@ -81,6 +81,7 @@ let pendingRoomChatMessages = [];
 let accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
 let privateMail = JSON.parse(localStorage.getItem('the-love-media-private-mail') || '{}');
 const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
+const maxPrivateMessages = 4;
 let communityVibeScore = Number(localStorage.getItem('the-love-media-vibe-score') || 100);
 const roomNames = [
   'ALL AROUND MAYHEM',
@@ -215,6 +216,14 @@ function connectRoomPresence(roomName = null) {
       }
       groupChatMessageHandler?.(message.sender, message.text);
       roomChatMessageHandler?.(message.sender, message.text);
+      return;
+    }
+    if (message.type === 'presence-joined') {
+      roomCounts = message.counts || {};
+      roomMembers = message.members || {};
+      updateFeaturedRoomTiles();
+      updateRadarMembers();
+      updateActiveRoomMates();
       return;
     }
     if (message.type !== 'room-counts') return;
@@ -3863,7 +3872,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const cameraStatus = document.getElementById('private-camera-status');
     const messageThread = document.getElementById('private-message-thread');
     const isFriendOnline = new Set([currentProfileName, ...(Object.values(roomMembers).flat())]).has(name);
-    const threadMessages = getPrivateThread(name);
+    const threadMessages = getPrivateThread(name).slice(-maxPrivateMessages);
 
     const addPrivateMessage = (sender, message, ownMessage = false) => {
       const messageBubble = document.createElement('div');
@@ -3886,9 +3895,11 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     }
 
     const appendThreadMessage = (sender, message, ownMessage = false) => {
+      if (threadMessages.length >= maxPrivateMessages) return false;
       threadMessages.push({ id: crypto.randomUUID(), sender, text: message, ownMessage, createdAt: Date.now() });
       savePrivateThread(name, threadMessages);
       addPrivateMessage(sender, message, ownMessage);
+      return true;
     };
 
     const sendSignal = (message) => {
@@ -4062,12 +4073,18 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       const status = document.getElementById('private-message-status');
       const message = input.value.trim();
       if (!message) return;
+      if (threadMessages.length >= maxPrivateMessages) {
+        status.textContent = `Private messages are limited to ${maxPrivateMessages} at a time.`;
+        return;
+      }
       appendThreadMessage(currentProfileName, message, true);
       if (!options.groupChat && !isFriendOnline) addPrivateMailMessage(name, currentProfileName, message);
       input.value = '';
-      status.textContent = !options.groupChat && !isFriendOnline
+      status.textContent = threadMessages.length >= maxPrivateMessages
+        ? `Private messages are limited to ${maxPrivateMessages} at a time.`
+        : (!options.groupChat && !isFriendOnline
         ? `${name} is offline. Your message was sent to PM Mail.`
-        : '';
+        : '');
 
       window.setTimeout(() => {
         if (!document.body.contains(messageModal) || !isFriendOnline) return;
