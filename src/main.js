@@ -73,6 +73,9 @@ let groupChatInvites = [];
 let roomCounts = {};
 let roomMembers = {};
 let roomPresenceSocket = null;
+let activeRoomChatId = null;
+let groupChatMessageHandler = null;
+let roomChatMessageHandler = null;
 let accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
 let privateMail = JSON.parse(localStorage.getItem('the-love-media-private-mail') || '{}');
 const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
@@ -187,10 +190,19 @@ function connectRoomPresence(roomName = null) {
   roomPresenceSocket.onopen = () => {
     roomPresenceSocket.send(JSON.stringify({ type: 'auth', sessionToken: currentSessionToken }));
     roomPresenceSocket.send(JSON.stringify({ type: 'presence-subscribe' }));
-    if (roomName) roomPresenceSocket.send(JSON.stringify({ type: 'presence-join', room: roomIdForName(roomName) }));
+    if (roomName) {
+      const roomId = roomIdForName(roomName);
+      roomPresenceSocket.send(JSON.stringify({ type: 'presence-join', room: roomId }));
+      roomPresenceSocket.send(JSON.stringify({ type: 'chat-join', room: roomId }));
+    }
   };
   roomPresenceSocket.onmessage = ({ data }) => {
     const message = JSON.parse(data);
+    if (message.type === 'chat-message') {
+      groupChatMessageHandler?.(message.sender, message.text);
+      roomChatMessageHandler?.(message.sender, message.text);
+      return;
+    }
     if (message.type !== 'room-counts') return;
     roomCounts = message.counts || {};
     roomMembers = message.members || {};
@@ -3311,10 +3323,17 @@ function openGroupChatMessagePopup() {
     bubble.append(senderLabel, messageText);
     document.getElementById('group-message-thread').appendChild(bubble);
   };
+  groupChatMessageHandler = (sender, text) => {
+    if (sender !== currentProfileName) addMessage(sender, text);
+  };
   const sendMessage = () => {
     const input = document.getElementById('group-message-input');
     if (!input.value.trim()) return;
-    addMessage(currentProfileName, input.value.trim());
+    const text = input.value.trim();
+    addMessage(currentProfileName, text);
+    if (roomPresenceSocket?.readyState === WebSocket.OPEN && activeRoomChatId) {
+      roomPresenceSocket.send(JSON.stringify({ type: 'chat-message', room: activeRoomChatId, text }));
+    }
     input.value = '';
   };
   document.getElementById('send-group-message-btn').addEventListener('click', sendMessage);
@@ -3330,6 +3349,7 @@ function openGroupChatMessagePopup() {
     openGroupCameraScreen(cameraCount);
   });
   document.getElementById('close-group-message-btn').addEventListener('click', () => {
+    groupChatMessageHandler = null;
     groupChatActive = false;
     updateGroupChatStatus();
     messageModal.remove();
@@ -3559,6 +3579,7 @@ function openGroupCameraScreen(cameraCount = 4) {
 }
 
 function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
+  activeRoomChatId = roomIdForName(roomName);
   connectRoomPresence(roomName);
   const customBackground = getRoomBackground(roomName);
   const shellClass = ['ALL AROUND MAYHEM', 'Twinks A Hoy', 'daddys and sons', 'bisexual town', 'lezy lickables', 'Queers all around us', 'Fuzzy Frenzy', 'Kinks r us', 'Transgender Dominance'].includes(roomName)
@@ -4139,6 +4160,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
   document.getElementById('exit-room-btn').addEventListener('click', () => {
     updateActiveRoomMates = () => {};
+    roomChatMessageHandler = null;
+    activeRoomChatId = null;
     groupChatActive = false;
     window.history.back();
   });
@@ -4159,7 +4182,24 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     messageText.textContent = message;
     bubble.append(sender, messageText);
     messages.appendChild(bubble);
+    if (roomPresenceSocket?.readyState === WebSocket.OPEN && activeRoomChatId) {
+      roomPresenceSocket.send(JSON.stringify({ type: 'chat-message', room: activeRoomChatId, text: message }));
+    }
     input.value = '';
+  };
+
+  roomChatMessageHandler = (senderName, messageText) => {
+    if (senderName === currentProfileName) return;
+    const messages = document.querySelector('.room-chat-messages');
+    if (!messages) return;
+    const bubble = document.createElement('div');
+    bubble.className = 'message-item';
+    const sender = document.createElement('strong');
+    sender.textContent = senderName;
+    const text = document.createElement('span');
+    text.textContent = messageText;
+    bubble.append(sender, text);
+    messages.appendChild(bubble);
   };
 
   document.getElementById('send-room-message-btn').addEventListener('click', sendRoomMessage);
@@ -4172,6 +4212,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
 function renderChatroomWorkspace(profileToView = null) {
   syncProfileMemory(currentProfileName);
+  activeRoomChatId = null;
+  roomChatMessageHandler = null;
   connectRoomPresence();
   app.innerHTML = `
     <div class="workspace-shell">

@@ -61,6 +61,7 @@ const accountFile = new URL('./accounts.json', import.meta.url);
 const stripe = stripeKey ? new Stripe(stripeKey) : null;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || process.env.business_stripe_webhook_secret || process.env.business_STRIPE_WEBHOOK_SECRET;
 const presenceRooms = new Map();
+const chatRooms = new Map();
 const allowedOrigins = new Set(
   `${process.env.ALLOWED_ORIGINS || ''},${process.env.FRONTEND_URL || ''},https://the-love-media-6.onrender.com,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173`
     .split(',')
@@ -149,6 +150,14 @@ function removePresence(socket) {
   if (room?.size === 0) presenceRooms.delete(socket.presenceRoomId);
   socket.presenceRoomId = null;
   broadcastPresenceCounts();
+}
+
+function removeChatPresence(socket) {
+  if (!socket.chatRoomId) return;
+  const room = chatRooms.get(socket.chatRoomId);
+  room?.delete(socket);
+  if (room?.size === 0) chatRooms.delete(socket.chatRoomId);
+  socket.chatRoomId = null;
 }
 
 async function readAccounts() {
@@ -466,6 +475,32 @@ server.on('connection', (socket) => {
       return;
     }
 
+    if (message.type === 'chat-join') {
+      removeChatPresence(socket);
+      const chatRoomId = String(message.room || '').trim();
+      if (chatRoomId) {
+        if (!chatRooms.has(chatRoomId)) chatRooms.set(chatRoomId, new Set());
+        chatRooms.get(chatRoomId).add(socket);
+        socket.chatRoomId = chatRoomId;
+      }
+      return;
+    }
+
+    if (message.type === 'chat-message') {
+      const chatRoomId = String(message.room || '').trim();
+      const text = String(message.text || '').trim();
+      if (!chatRoomId || !text || chatRoomId !== socket.chatRoomId) return;
+      const chatMessage = JSON.stringify({
+        type: 'chat-message',
+        sender: authenticatedSession.codename,
+        text
+      });
+      for (const client of chatRooms.get(chatRoomId) || []) {
+        if (client.readyState === 1) client.send(chatMessage);
+      }
+      return;
+    }
+
     if (message.type === 'presence-leave') {
       removePresence(socket);
       return;
@@ -494,6 +529,7 @@ server.on('connection', (socket) => {
 
   socket.on('close', () => {
     removePresence(socket);
+    removeChatPresence(socket);
     if (!roomId || !peerId) return;
     const room = rooms.get(roomId);
     room?.delete(peerId);
