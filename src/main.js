@@ -76,6 +76,8 @@ let roomPresenceSocket = null;
 let activeRoomChatId = null;
 let groupChatMessageHandler = null;
 let roomChatMessageHandler = null;
+let roomChatReady = false;
+let pendingRoomChatMessages = [];
 let accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
 let privateMail = JSON.parse(localStorage.getItem('the-love-media-private-mail') || '{}');
 const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
@@ -186,6 +188,8 @@ let updateActiveRoomMates = () => {};
 
 function connectRoomPresence(roomName = null) {
   roomPresenceSocket?.close();
+  roomChatReady = false;
+  pendingRoomChatMessages = [];
   roomPresenceSocket = new WebSocket(webSocketBaseUrl);
   roomPresenceSocket.onopen = () => {
     roomPresenceSocket.send(JSON.stringify({ type: 'auth', sessionToken: currentSessionToken }));
@@ -194,6 +198,10 @@ function connectRoomPresence(roomName = null) {
       const roomId = roomIdForName(roomName);
       roomPresenceSocket.send(JSON.stringify({ type: 'presence-join', room: roomId }));
       roomPresenceSocket.send(JSON.stringify({ type: 'chat-join', room: roomId }));
+      roomChatReady = true;
+      for (const text of pendingRoomChatMessages.splice(0)) {
+        roomPresenceSocket.send(JSON.stringify({ type: 'chat-message', room: roomId, text }));
+      }
     }
   };
   roomPresenceSocket.onmessage = ({ data }) => {
@@ -4168,6 +4176,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     updateActiveRoomMates = () => {};
     roomChatMessageHandler = null;
     activeRoomChatId = null;
+    roomChatReady = false;
+    pendingRoomChatMessages = [];
     groupChatActive = false;
     window.history.back();
   });
@@ -4188,8 +4198,10 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     messageText.textContent = message;
     bubble.append(sender, messageText);
     messages.appendChild(bubble);
-    if (roomPresenceSocket?.readyState === WebSocket.OPEN && activeRoomChatId) {
+    if (roomChatReady && roomPresenceSocket?.readyState === WebSocket.OPEN && activeRoomChatId) {
       roomPresenceSocket.send(JSON.stringify({ type: 'chat-message', room: activeRoomChatId, text: message }));
+    } else if (activeRoomChatId) {
+      pendingRoomChatMessages.push(message);
     }
     input.value = '';
   };
@@ -4220,6 +4232,8 @@ function renderChatroomWorkspace(profileToView = null) {
   syncProfileMemory(currentProfileName);
   activeRoomChatId = null;
   roomChatMessageHandler = null;
+  roomChatReady = false;
+  pendingRoomChatMessages = [];
   connectRoomPresence();
   app.innerHTML = `
     <div class="workspace-shell">
