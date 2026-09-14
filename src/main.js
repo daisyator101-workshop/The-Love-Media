@@ -4679,6 +4679,7 @@ function renderChatroomWorkspace(profileToView = null) {
   }
 
   const openOwnProfileEditor = () => {
+    suggestionsModal.classList.add('hidden');
     syncProfileMemory(currentProfileName);
     profileNameInput.value = currentProfileName;
     profileBioInput.value = currentProfileBio;
@@ -4718,6 +4719,10 @@ function renderChatroomWorkspace(profileToView = null) {
 
   closeSuggestionsBtn.addEventListener('click', () => {
     suggestionsModal.classList.add('hidden');
+  });
+
+  suggestionsModal.addEventListener('pointerdown', (event) => {
+    if (event.target === suggestionsModal) suggestionsModal.classList.add('hidden');
   });
 
   sendSuggestionBtn.addEventListener('click', () => {
