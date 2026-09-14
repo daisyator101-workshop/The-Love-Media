@@ -315,6 +315,10 @@ function clearPersistedSession() {
   currentSessionToken = '';
 }
 
+function hasAuthenticatedSession() {
+  return Boolean(currentSessionToken);
+}
+
 function savePrivateMail() {
   localStorage.setItem('the-love-media-private-mail', JSON.stringify(privateMail));
 }
@@ -4808,6 +4812,10 @@ function renderChatroomWorkspace(profileToView = null) {
 function renderInitialRoute() {
   const hash = window.location.hash;
   if (hash === '#donation') {
+    if (!hasAuthenticatedSession()) {
+      renderLoginPage();
+      return;
+    }
     const returnHash = sessionStorage.getItem('the-love-media-donation-return-hash') || '#welcome';
     if (returnHash === '#workspace') {
       renderChatroomWorkspace();
@@ -4823,6 +4831,10 @@ function renderInitialRoute() {
     return;
   }
   if (hash === '#workspace') {
+    if (!hasAuthenticatedSession()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
@@ -4887,10 +4899,18 @@ const handleAuthHistoryBack = (event) => {
     return;
   }
   if ((event.state?.screen === 'workspace' || window.location.hash === '#workspace') && workspaceHeading !== 'Chatroom workspace') {
+    if (!hasAuthenticatedSession()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
   if (window.location.hash === '#workspace' && document.querySelector('.room-shell')) {
+    if (!hasAuthenticatedSession()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
@@ -4907,6 +4927,10 @@ window.addEventListener('popstate', handleAuthHistoryBack);
 window.addEventListener('hashchange', handleAuthHistoryBack);
 window.addEventListener('hashchange', () => {
   if (window.location.hash === '#workspace' && !document.querySelector('.workspace-sidebar')) {
+    if (!hasAuthenticatedSession()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
   }
 });
@@ -4922,6 +4946,10 @@ window.addEventListener('hashchange', () => {
 });
 const restoreDonationRoute = () => {
   if (window.location.hash !== '#donation' || document.querySelector('#donation-modal')) return;
+  if (!hasAuthenticatedSession()) {
+    renderLoginPage();
+    return;
+  }
   const returnHash = history.state?.returnHash || sessionStorage.getItem('the-love-media-donation-return-hash') || '#welcome';
   if (returnHash === '#workspace' && !document.querySelector('.workspace-sidebar')) renderChatroomWorkspace();
   const roomRoute = returnHash.match(/^#room\/([^/]+)$/);
