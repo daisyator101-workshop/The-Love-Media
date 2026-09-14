@@ -19,7 +19,7 @@ services:
           name: the-love-media-db
           property: connectionString
 
-  - type: static
+  - type: static_site
     name: the-love-media
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
