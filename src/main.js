@@ -3959,7 +3959,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         const incoming = JSON.parse(data);
         if (incoming.type === 'private-message' && incoming.sender !== currentProfileName) {
           appendThreadMessage(incoming.sender, incoming.text, false);
-          addPrivateMailMessage(incoming.sender, incoming.sender, incoming.text);
         }
       };
     } catch {

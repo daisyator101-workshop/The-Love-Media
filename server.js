@@ -538,18 +538,23 @@ server.on('connection', (socket) => {
       const recipient = String(message.recipient || '').trim();
       const text = String(message.text || '').trim();
       if (!privateRoomId || !recipient || !text || privateRoomId !== socket.privateMessageRoomId) return;
-      const accounts = await readAccounts();
-      const recipientAccount = accounts.find((account) => account.codename.toLowerCase() === recipient.toLowerCase());
-      if (recipientAccount) {
-        const privateMail = Array.isArray(recipientAccount.privateMail) ? recipientAccount.privateMail : [];
-        privateMail.push({
-          id: randomBytes(16).toString('hex'),
-          sender: authenticatedSession.codename,
-          text,
-          createdAt: Date.now()
-        });
-        recipientAccount.privateMail = privateMail.slice(-100);
-        await saveAccounts(accounts);
+      const recipientOnline = [...(privateMessageRooms.get(privateRoomId) || [])]
+        .some((client) => client.readyState === 1
+          && client.authenticatedSession?.codename?.toLowerCase() === recipient.toLowerCase());
+      if (!recipientOnline) {
+        const accounts = await readAccounts();
+        const recipientAccount = accounts.find((account) => account.codename.toLowerCase() === recipient.toLowerCase());
+        if (recipientAccount) {
+          const privateMail = Array.isArray(recipientAccount.privateMail) ? recipientAccount.privateMail : [];
+          privateMail.push({
+            id: randomBytes(16).toString('hex'),
+            sender: authenticatedSession.codename,
+            text,
+            createdAt: Date.now()
+          });
+          recipientAccount.privateMail = privateMail.slice(-100);
+          await saveAccounts(accounts);
+        }
       }
       const privateMessage = JSON.stringify({
         type: 'private-message',
