@@ -1735,6 +1735,14 @@ async function renderWelcomeVideosPage() {
   }
 
   startBtn.addEventListener('click', async () => {
+    if (!isGayjesus) {
+      status.textContent = 'Only Gayjesus can record videos.';
+      return;
+    }
+    if (['screen', 'both'].includes(currentRecordingMode) && typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      status.textContent = 'Screen recording is not supported on this phone. Select Camera mode to record with your phone camera.';
+      return;
+    }
     try {
       if (currentRecordingMode === 'camera') {
         if (!previewCameraStream || !previewCameraStream.active) {
@@ -2360,6 +2368,14 @@ async function renderGayjesusBlogPage() {
   }
 
   startBtn.addEventListener('click', async () => {
+    if (!isGayjesus) {
+      status.textContent = 'Only Gayjesus can record videos.';
+      return;
+    }
+    if (['screen', 'both'].includes(currentRecordingMode) && typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      status.textContent = 'Screen recording is not supported on this phone. Select Camera mode to record with your phone camera.';
+      return;
+    }
     try {
       if (currentRecordingMode === 'camera') {
         if (!previewCameraStream || !previewCameraStream.active) {
