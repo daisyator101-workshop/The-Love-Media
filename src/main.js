@@ -4498,7 +4498,6 @@ function renderChatroomWorkspace(profileToView = null) {
               <p id="profile-bio-display">A little about you goes here.</p>
             </div>
             <div class="profile-action">
-              <button class="secondary-btn" id="profile-btn" type="button">Profile</button>
               <button class="secondary-btn" id="edit-profile-item" type="button">Edit profile</button>
             </div>
             <button class="secondary-btn" id="suggestions-btn">Suggestions and vibe rating</button>
@@ -4635,7 +4634,6 @@ function renderChatroomWorkspace(profileToView = null) {
     </div>
   `;
 
-  const profileBtn = document.getElementById('profile-btn');
   document.getElementById('sign-out-btn').addEventListener('click', () => {
     privateMessageOpener = null;
     groupChatActive = false;
@@ -4646,7 +4644,6 @@ function renderChatroomWorkspace(profileToView = null) {
   document.getElementById('workspace-gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('workspace-friends-connect-btn').addEventListener('click', openFriendsConnectPage);
   document.getElementById('workspace-donate-btn').addEventListener('click', openDonationPopup);
-  const profileMenu = document.getElementById('profile-menu');
   const editProfileItem = document.getElementById('edit-profile-item');
   const suggestionsBtn = document.getElementById('suggestions-btn');
   const suggestionsModal = document.getElementById('suggestions-modal');
@@ -4694,14 +4691,8 @@ function renderChatroomWorkspace(profileToView = null) {
     profileEditorModal.classList.remove('hidden');
   };
 
-  profileBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    openOwnProfileEditor();
-  });
-
   editProfileItem.addEventListener('click', (event) => {
     event.stopPropagation();
-    profileMenu?.classList.add('hidden');
     openOwnProfileEditor();
   });
 
@@ -4766,10 +4757,7 @@ function renderChatroomWorkspace(profileToView = null) {
   });
 
   document.addEventListener('click', (event) => {
-    if (!profileMenu.contains(event.target) && !profileBtn.contains(event.target)) {
-      profileMenu.classList.add('hidden');
-    }
-    if (!profileEditorModal.contains(event.target) && !event.target.closest('#profile-btn') && !event.target.closest('#edit-profile-item')) {
+    if (!profileEditorModal.contains(event.target) && !event.target.closest('#edit-profile-item')) {
       profileEditorModal.classList.add('hidden');
     }
     if (!suggestionsModal.contains(event.target) && !event.target.closest('#suggestions-btn')) {
