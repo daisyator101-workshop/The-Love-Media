@@ -205,6 +205,36 @@ function renderRoomTiles() {
 }
 
 let updateActiveRoomMates = () => {};
+let openPrivateMessageHandler = null;
+
+function receivePrivateMessage(sender, text, id = crypto.randomUUID()) {
+  const existingMessages = getPrivateThread(sender);
+  if (!existingMessages.some((message) => message.id === id)) {
+    existingMessages.push({ id, sender, text, ownMessage: false, createdAt: Date.now() });
+    savePrivateThread(sender, existingMessages);
+  }
+
+  const messageModal = document.getElementById('private-message-modal');
+  const recipient = messageModal?.dataset.privateRecipient;
+  if (recipient === String(sender).toLowerCase().trim()) {
+    const thread = messageModal.querySelector('#private-message-thread');
+    if (thread && !thread.querySelector(`[data-message-id="${id}"]`)) {
+      const bubble = document.createElement('div');
+      bubble.className = 'private-message-bubble';
+      bubble.dataset.messageId = id;
+      const senderLabel = document.createElement('strong');
+      senderLabel.textContent = sender;
+      const messageText = document.createElement('span');
+      messageText.textContent = text;
+      bubble.append(senderLabel, messageText);
+      thread.appendChild(bubble);
+      thread.scrollTop = thread.scrollHeight;
+    }
+    return;
+  }
+
+  openPrivateMessageHandler?.(sender);
+}
 
 function connectRoomPresence(roomName = null) {
   roomPresenceSocket?.close();
@@ -226,6 +256,10 @@ function connectRoomPresence(roomName = null) {
   };
   roomPresenceSocket.onmessage = ({ data }) => {
     const message = JSON.parse(data);
+    if (message.type === 'private-message' && message.sender !== currentProfileName) {
+      receivePrivateMessage(message.sender, message.text, message.id);
+      return;
+    }
     if (message.type === 'chat-message') {
       if (activeRoomChatId && message.sender) {
         roomMembers[activeRoomChatId] = [
@@ -2844,6 +2878,7 @@ function openWelcomePage() {
 }
 
 function renderNextPage() {
+  connectRoomPresence();
   app.innerHTML = `
     <div class="app-shell">
       <div class="floating-hearts welcome-hearts" aria-hidden="true">
@@ -3784,6 +3819,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const messageModal = document.createElement('div');
     messageModal.className = `profile-editor-modal${options.groupChat ? ' group-chat-message-modal' : ''}`;
     messageModal.id = 'private-message-modal';
+    messageModal.dataset.privateRecipient = String(name || '').toLowerCase().trim();
     messageModal.innerHTML = `
       <div class="profile-editor-card private-message-card">
         <div class="private-message-drag-handle" title="Drag to move message box">
@@ -3958,7 +3994,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       privateMessageSocket.onmessage = ({ data }) => {
         const incoming = JSON.parse(data);
         if (incoming.type === 'private-message' && incoming.sender !== currentProfileName) {
-          appendThreadMessage(incoming.sender, incoming.text, false);
+          receivePrivateMessage(incoming.sender, incoming.text, incoming.id);
         }
       };
     } catch {
@@ -4174,6 +4210,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
   }
 
   privateMessageOpener = openPrivateMessage;
+  openPrivateMessageHandler = openPrivateMessage;
   if (pendingPrivateMessageFriend) {
     const friendToMessage = pendingPrivateMessageFriend;
     pendingPrivateMessageFriend = null;

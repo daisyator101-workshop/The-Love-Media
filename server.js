@@ -469,6 +469,7 @@ server.on('connection', (socket) => {
 
     if (message.type === 'auth') {
       authenticatedSession = getSessionByToken(String(message.sessionToken || ''));
+      socket.authenticatedSession = authenticatedSession;
       if (!authenticatedSession) socket.close(1008, 'Authentication required.');
       return;
     }
@@ -538,9 +539,9 @@ server.on('connection', (socket) => {
       const recipient = String(message.recipient || '').trim();
       const text = String(message.text || '').trim();
       if (!privateRoomId || !recipient || !text || privateRoomId !== socket.privateMessageRoomId) return;
-      const recipientOnline = [...(privateMessageRooms.get(privateRoomId) || [])]
-        .some((client) => client.readyState === 1
-          && client.authenticatedSession?.codename?.toLowerCase() === recipient.toLowerCase());
+      const recipientSockets = [...server.clients].filter((client) => client.readyState === 1
+        && client.authenticatedSession?.codename?.toLowerCase() === recipient.toLowerCase());
+      const recipientOnline = recipientSockets.length > 0;
       if (!recipientOnline) {
         const accounts = await readAccounts();
         const recipientAccount = accounts.find((account) => account.codename.toLowerCase() === recipient.toLowerCase());
@@ -558,12 +559,11 @@ server.on('connection', (socket) => {
       }
       const privateMessage = JSON.stringify({
         type: 'private-message',
+        id: randomBytes(16).toString('hex'),
         sender: authenticatedSession.codename,
         text
       });
-      for (const client of privateMessageRooms.get(privateRoomId) || []) {
-        if (client.readyState === 1) client.send(privateMessage);
-      }
+      for (const client of recipientSockets) client.send(privateMessage);
       return;
     }
 
