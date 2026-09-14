@@ -4757,9 +4757,6 @@ function renderChatroomWorkspace(profileToView = null) {
   });
 
   document.addEventListener('click', (event) => {
-    if (!profileEditorModal.contains(event.target) && !event.target.closest('#edit-profile-item')) {
-      profileEditorModal.classList.add('hidden');
-    }
     if (!suggestionsModal.contains(event.target) && !event.target.closest('#suggestions-btn')) {
       suggestionsModal.classList.add('hidden');
     }
