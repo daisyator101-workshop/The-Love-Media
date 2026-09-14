@@ -448,10 +448,9 @@ const httpServer = createServer(async (request, response) => {
       return;
     }
     if (request.url === '/api/profile') {
-      const codename = String(body.codename || '').trim();
-      const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === codename.toLowerCase());
       const session = getAuthenticatedSession(request);
-      if (!account || session.codename.toLowerCase() !== codename.toLowerCase()) throw new Error('Authentication required.');
+      const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === session.codename.toLowerCase());
+      if (!account) throw new Error('Authentication required.');
       account.profile = {
         bio: String(body.profile?.bio || ''),
         statuses: Array.isArray(body.profile?.statuses) ? body.profile.statuses : [],

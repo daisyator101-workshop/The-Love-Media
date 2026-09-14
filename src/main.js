@@ -20,6 +20,7 @@ const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
 let currentProfileName = 'Gayjesus';
+let currentAccountCodename = 'Gayjesus';
 let currentSessionToken = '';
 try {
   const remembered = JSON.parse(localStorage.getItem('the-love-media-remembered-login') || 'null');
@@ -700,6 +701,7 @@ function renderLoginPage() {
     try {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
+      currentAccountCodename = result.codename;
       currentSessionToken = result.sessionToken || '';
       await syncPrivateMailFromServer();
       const savedUserProf = loadProfileForUser(currentProfileName);
@@ -4687,6 +4689,7 @@ function renderChatroomWorkspace(profileToView = null) {
     profileEditorModal.querySelectorAll('input, textarea').forEach((field) => {
       field.disabled = false;
     });
+    profileNameInput.disabled = true;
     document.getElementById('save-profile-btn').classList.remove('hidden');
     profileEditorModal.classList.remove('hidden');
   };
@@ -4725,15 +4728,16 @@ function renderChatroomWorkspace(profileToView = null) {
   });
 
   document.getElementById('save-profile-btn').addEventListener('click', async () => {
-    const nextName = profileNameInput.value.trim() || 'Gayjesus';
+    const nextName = currentAccountCodename || currentProfileName;
     const nextBio = profileBioInput.value.trim() || 'A little about you goes here.';
+    const accountCodename = currentAccountCodename || currentProfileName;
     currentProfileName = nextName;
     currentProfileBio = nextBio;
     currentConnectionStatus = document.getElementById('connection-status-input').value.trim();
     currentProfileStatuses = ['Single', 'Coupled', 'Married'].filter((status) => {
       return document.getElementById(`status-${status.toLowerCase()}`).checked;
     });
-    saveProfileForUser(currentProfileName, {
+    saveProfileForUser(accountCodename, {
       name: currentProfileName,
       bio: currentProfileBio,
       statuses: currentProfileStatuses,
@@ -4741,7 +4745,7 @@ function renderChatroomWorkspace(profileToView = null) {
     });
     try {
       await accountApi('/api/profile', {
-        codename: currentProfileName,
+        codename: accountCodename,
         profile: {
           bio: currentProfileBio,
           statuses: currentProfileStatuses,
