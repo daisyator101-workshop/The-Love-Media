@@ -14,6 +14,18 @@ A private local queer live chat and social experience.
 
 The app uses port `3000` for the web page and port `3002` for accounts and video signaling. The web port is locked so Vite stops with an error instead of silently changing the URL when port `3000` is already in use.
 
+## Windows desktop app
+
+The project includes a Tauri wrapper for building a lightweight Windows desktop app from the same Vite frontend.
+
+1. Install Rust through `rustup` and restart VS Code.
+2. Start the desktop development app:
+   `npm.cmd run tauri:dev`
+3. Build the Windows installer:
+   `npm.cmd run tauri:build`
+
+The desktop app still connects to the hosted account and WebSocket services. Tauri build output is created under `src-tauri/target/release/bundle/`.
+
 ## Stripe donation setup
 
 1. In the project folder, copy `.env.example` and name the copy `.env`.
