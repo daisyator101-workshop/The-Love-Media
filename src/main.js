@@ -4680,6 +4680,7 @@ function renderChatroomWorkspace(profileToView = null) {
 
   const openOwnProfileEditor = () => {
     suggestionsModal.classList.add('hidden');
+    if (profileEditorModal.parentElement !== document.body) document.body.appendChild(profileEditorModal);
     syncProfileMemory(currentProfileName);
     profileNameInput.value = currentProfileName;
     profileBioInput.value = currentProfileBio;
@@ -4714,6 +4715,7 @@ function renderChatroomWorkspace(profileToView = null) {
   const openSuggestions = (event) => {
     event.stopPropagation();
     event.preventDefault();
+    if (suggestionsModal.parentElement !== document.body) document.body.appendChild(suggestionsModal);
     suggestionsModal.classList.remove('hidden');
   };
   let suggestionsHandledAt = 0;
