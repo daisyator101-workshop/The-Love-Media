@@ -304,7 +304,7 @@ const httpServer = createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Vary', 'Origin');
   }
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
   response.setHeader('X-Content-Type-Options', 'nosniff');
