@@ -3905,6 +3905,31 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       return true;
     };
 
+    const privateMessageRoom = 'private-message-' + [currentProfileName, name]
+      .map((value) => encodeURIComponent(String(value || '').toLowerCase().trim()))
+      .sort()
+      .join('-');
+    let privateMessageSocket = null;
+    const pendingPrivateMessages = [];
+    try {
+      privateMessageSocket = new WebSocket(webSocketBaseUrl);
+      privateMessageSocket.onopen = () => {
+        privateMessageSocket.send(JSON.stringify({ type: 'auth', sessionToken: currentSessionToken }));
+        privateMessageSocket.send(JSON.stringify({ type: 'private-message-join', room: privateMessageRoom }));
+        for (const text of pendingPrivateMessages.splice(0)) {
+          privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, text }));
+        }
+      };
+      privateMessageSocket.onmessage = ({ data }) => {
+        const incoming = JSON.parse(data);
+        if (incoming.type === 'private-message' && incoming.sender !== currentProfileName) {
+          appendThreadMessage(incoming.sender, incoming.text, false);
+        }
+      };
+    } catch {
+      privateMessageSocket = null;
+    }
+
     const sendSignal = (message) => {
       if (signalingSocket?.readyState === WebSocket.OPEN) signalingSocket.send(JSON.stringify(message));
     };
@@ -4080,20 +4105,17 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         status.textContent = `Private messages are limited to ${maxPrivateMessages} at a time.`;
         return;
       }
-      appendThreadMessage(currentProfileName, message, true);
-      if (!options.groupChat && !isFriendOnline) addPrivateMailMessage(name, currentProfileName, message);
+      if (!appendThreadMessage(currentProfileName, message, true)) return;
+      if (privateMessageSocket?.readyState === WebSocket.OPEN) {
+        privateMessageSocket.send(JSON.stringify({ type: 'private-message', room: privateMessageRoom, text: message }));
+      } else {
+        pendingPrivateMessages.push(message);
+        status.textContent = 'Sending private message...';
+      }
       input.value = '';
       status.textContent = threadMessages.length >= maxPrivateMessages
         ? `Private messages are limited to ${maxPrivateMessages} at a time.`
-        : (!options.groupChat && !isFriendOnline
-        ? `${name} is offline. Your message was sent to PM Mail.`
-        : '');
-
-      window.setTimeout(() => {
-        if (!document.body.contains(messageModal) || !isFriendOnline) return;
-        const reply = `${name}: Thanks for reaching out.`;
-        appendThreadMessage(name, reply, false);
-      }, 600);
+        : '';
     };
 
     document.getElementById('send-private-message-btn').addEventListener('click', sendPrivateMessage);
@@ -4108,6 +4130,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         groupChatActive = false;
         updateGroupChatStatus();
       }
+      privateMessageSocket?.close();
       messageModal.remove();
     });
   }

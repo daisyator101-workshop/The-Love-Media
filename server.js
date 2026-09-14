@@ -62,6 +62,7 @@ const stripe = stripeKey ? new Stripe(stripeKey) : null;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || process.env.business_stripe_webhook_secret || process.env.business_STRIPE_WEBHOOK_SECRET;
 const presenceRooms = new Map();
 const chatRooms = new Map();
+const privateMessageRooms = new Map();
 const allowedOrigins = new Set(
   `${process.env.ALLOWED_ORIGINS || ''},${process.env.FRONTEND_URL || ''},https://the-love-media-6.onrender.com,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173`
     .split(',')
@@ -161,6 +162,14 @@ function removeChatPresence(socket) {
   room?.delete(socket);
   if (room?.size === 0) chatRooms.delete(socket.chatRoomId);
   socket.chatRoomId = null;
+}
+
+function removePrivateMessagePresence(socket) {
+  if (!socket.privateMessageRoomId) return;
+  const room = privateMessageRooms.get(socket.privateMessageRoomId);
+  room?.delete(socket);
+  if (room?.size === 0) privateMessageRooms.delete(socket.privateMessageRoomId);
+  socket.privateMessageRoomId = null;
 }
 
 async function readAccounts() {
@@ -505,6 +514,32 @@ server.on('connection', (socket) => {
       return;
     }
 
+    if (message.type === 'private-message-join') {
+      removePrivateMessagePresence(socket);
+      const privateRoomId = String(message.room || '').trim();
+      if (privateRoomId) {
+        if (!privateMessageRooms.has(privateRoomId)) privateMessageRooms.set(privateRoomId, new Set());
+        privateMessageRooms.get(privateRoomId).add(socket);
+        socket.privateMessageRoomId = privateRoomId;
+      }
+      return;
+    }
+
+    if (message.type === 'private-message') {
+      const privateRoomId = String(message.room || '').trim();
+      const text = String(message.text || '').trim();
+      if (!privateRoomId || !text || privateRoomId !== socket.privateMessageRoomId) return;
+      const privateMessage = JSON.stringify({
+        type: 'private-message',
+        sender: authenticatedSession.codename,
+        text
+      });
+      for (const client of privateMessageRooms.get(privateRoomId) || []) {
+        if (client.readyState === 1) client.send(privateMessage);
+      }
+      return;
+    }
+
     if (message.type === 'presence-leave') {
       removePresence(socket);
       return;
@@ -534,6 +569,7 @@ server.on('connection', (socket) => {
   socket.on('close', () => {
     removePresence(socket);
     removeChatPresence(socket);
+    removePrivateMessagePresence(socket);
     if (!roomId || !peerId) return;
     const room = rooms.get(roomId);
     room?.delete(peerId);
