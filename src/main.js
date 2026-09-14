@@ -1,5 +1,11 @@
 import './index.css';
 
+if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 const app = document.getElementById('root');
 const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const configuredApiUrl = import.meta.env.VITE_API_URL || '';
@@ -931,6 +937,60 @@ function normalizeVideoComments(video) {
   };
 }
 
+async function videoForServer(video) {
+  if (!video?.blob || !(video.blob instanceof Blob)) return video;
+  const bytes = new Uint8Array(await video.blob.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return { ...video, blob: `data:${video.blob.type || 'video/webm'};base64,${btoa(binary)}` };
+}
+
+function videoFromServer(video) {
+  if (!video?.blob || typeof video.blob !== 'string' || !video.blob.startsWith('data:')) return video;
+  try {
+    const [header, encoded] = video.blob.split(',');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return { ...video, blob: new Blob([bytes], { type: header.match(/data:([^;]+)/)?.[1] || 'video/webm' }) };
+  } catch {
+    return video;
+  }
+}
+
+async function getSharedVideos(kind) {
+  if (!currentSessionToken) return null;
+  try {
+    const result = await accountApi('/api/videos', {});
+    return (result.videos || []).filter((video) => video.kind === kind).map(videoFromServer);
+  } catch {
+    return null;
+  }
+}
+
+async function saveSharedVideo(video) {
+  if (!currentSessionToken) return;
+  await accountApi('/api/videos/save', { video: await videoForServer(video) });
+}
+
+async function deleteSharedVideo(id) {
+  if (!currentSessionToken) return;
+  await accountApi('/api/videos/delete', { id });
+}
+
+async function migrateLocalVideosToShared(videos) {
+  if (!videos.length) return;
+  for (const video of videos) {
+    try {
+      await saveSharedVideo(video);
+    } catch {
+      return;
+    }
+  }
+}
+
 const DB_NAME = 'the-love-media-video-db';
 const DB_VERSION = 1;
 const VIDEO_STORE = 'videos';
@@ -968,6 +1028,9 @@ async function getWelcomeVideos() {
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
 
+  const sharedVideos = await getSharedVideos('welcome');
+  if (sharedVideos?.length) return sortVideos(sharedVideos).map(normalizeVideoComments);
+
   const db = await openVideoDB();
   if (db) {
     try {
@@ -979,7 +1042,10 @@ async function getWelcomeVideos() {
         req.onerror = () => resolve([]);
       });
       const welcomeVids = sortVideos(all.filter((v) => (v.kind || 'welcome') === 'welcome'));
-      if (welcomeVids.length > 0) return welcomeVids.map(normalizeVideoComments);
+      if (welcomeVids.length > 0) {
+        if (sharedVideos) await migrateLocalVideosToShared(welcomeVids);
+        return welcomeVids.map(normalizeVideoComments);
+      }
     } catch (e) {
       console.warn('IndexedDB read error:', e);
     }
@@ -996,6 +1062,7 @@ async function getWelcomeVideos() {
 
 async function saveWelcomeVideo(video) {
   video.kind = 'welcome';
+  await saveSharedVideo(video);
   memoryVideosMap.set(video.id, video);
   const db = await openVideoDB();
   if (db) {
@@ -1039,6 +1106,7 @@ async function togglePinWelcomeVideo(id) {
 }
 
 async function deleteWelcomeVideo(id) {
+  await deleteSharedVideo(id);
   memoryVideosMap.delete(id);
   const db = await openVideoDB();
   if (db) {
@@ -1060,6 +1128,9 @@ async function getGayjesusBlogVideos() {
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
 
+  const sharedVideos = await getSharedVideos('blog');
+  if (sharedVideos?.length) return sortVideos(sharedVideos).map(normalizeVideoComments);
+
   const db = await openVideoDB();
   if (db) {
     try {
@@ -1071,7 +1142,10 @@ async function getGayjesusBlogVideos() {
         req.onerror = () => resolve([]);
       });
       const blogVids = sortVideos(all.filter((v) => v.kind === 'blog'));
-      if (blogVids.length > 0) return blogVids.map(normalizeVideoComments);
+      if (blogVids.length > 0) {
+        if (sharedVideos) await migrateLocalVideosToShared(blogVids);
+        return blogVids.map(normalizeVideoComments);
+      }
     } catch (e) {
       console.warn('IndexedDB read error:', e);
     }
@@ -1088,6 +1162,7 @@ async function getGayjesusBlogVideos() {
 
 async function saveGayjesusBlogVideo(video) {
   video.kind = 'blog';
+  await saveSharedVideo(video);
   memoryVideosMap.set(video.id, video);
   const db = await openVideoDB();
   if (db) {
@@ -1113,6 +1188,7 @@ async function saveGayjesusBlogVideos(videos) {
 }
 
 async function deleteGayjesusBlogVideo(id) {
+  await deleteSharedVideo(id);
   memoryVideosMap.delete(id);
   const db = await openVideoDB();
   if (db) {

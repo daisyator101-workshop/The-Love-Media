@@ -58,6 +58,7 @@ const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.stripe_secret_key
 const port = Number(process.env.SIGNALING_PORT || 3002);
 const rooms = new Map();
 const accountFile = new URL('./accounts.json', import.meta.url);
+const videoFile = new URL('./videos.json', import.meta.url);
 const stripe = stripeKey ? new Stripe(stripeKey) : null;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || process.env.business_stripe_webhook_secret || process.env.business_STRIPE_WEBHOOK_SECRET;
 const presenceRooms = new Map();
@@ -206,6 +207,51 @@ async function saveAccounts(accounts) {
     return;
   }
   await writeFile(accountFile, JSON.stringify(accounts, null, 2));
+}
+
+async function readVideos() {
+  if (databasePool) {
+    if (!databaseReady) {
+      await databasePool.query('CREATE TABLE IF NOT EXISTS app_state (id integer PRIMARY KEY, accounts jsonb NOT NULL)');
+      databaseReady = true;
+    }
+    await databasePool.query('CREATE TABLE IF NOT EXISTS app_videos (id text PRIMARY KEY, video jsonb NOT NULL)');
+    const result = await databasePool.query('SELECT video FROM app_videos ORDER BY (video->>\'timestamp\')::bigint DESC NULLS LAST');
+    return result.rows.map((row) => row.video);
+  }
+  try {
+    return JSON.parse(await readFile(videoFile, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+async function saveVideo(video) {
+  if (databasePool) {
+    await databasePool.query(
+      'CREATE TABLE IF NOT EXISTS app_videos (id text PRIMARY KEY, video jsonb NOT NULL)'
+    );
+    await databasePool.query(
+      'INSERT INTO app_videos (id, video) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO UPDATE SET video = EXCLUDED.video',
+      [String(video.id), JSON.stringify(video)]
+    );
+    return;
+  }
+  const videos = await readVideos();
+  const index = videos.findIndex((savedVideo) => savedVideo.id === video.id);
+  if (index >= 0) videos[index] = video;
+  else videos.push(video);
+  await writeFile(videoFile, JSON.stringify(videos, null, 2));
+}
+
+async function deleteVideo(id) {
+  if (databasePool) {
+    await databasePool.query('CREATE TABLE IF NOT EXISTS app_videos (id text PRIMARY KEY, video jsonb NOT NULL)');
+    await databasePool.query('DELETE FROM app_videos WHERE id = $1', [String(id)]);
+    return;
+  }
+  const videos = (await readVideos()).filter((video) => video.id !== id);
+  await writeFile(videoFile, JSON.stringify(videos, null, 2));
 }
 
 function hashPassword(password, salt = randomBytes(16).toString('hex')) {
@@ -421,6 +467,31 @@ const httpServer = createServer(async (request, response) => {
       const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === session.codename.toLowerCase());
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ messages: Array.isArray(account?.privateMail) ? account.privateMail : [] }));
+      return;
+    }
+    if (request.url === '/api/videos') {
+      getAuthenticatedSession(request);
+      const videos = await readVideos();
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ videos }));
+      return;
+    }
+    if (request.url === '/api/videos/save') {
+      const session = getAuthenticatedSession(request);
+      if (session.codename.toLowerCase() !== 'gayjesus') throw new Error('Only Gayjesus can save videos.');
+      const video = body.video;
+      if (!video?.id || !['welcome', 'blog'].includes(video.kind)) throw new Error('Invalid video.');
+      await saveVideo(video);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ saved: true }));
+      return;
+    }
+    if (request.url === '/api/videos/delete') {
+      const session = getAuthenticatedSession(request);
+      if (session.codename.toLowerCase() !== 'gayjesus') throw new Error('Only Gayjesus can delete videos.');
+      await deleteVideo(body.id);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ deleted: true }));
       return;
     }
     if (request.url === '/api/delete-account') {
