@@ -18,6 +18,20 @@ const configuredWebSocketUrl = import.meta.env.VITE_WS_URL || '';
 const webSocketBaseUrl = configuredWebSocketUrl && !isKnownStaticSiteUrl
   ? configuredWebSocketUrl.replace(/\/$/, '')
   : (isLocalDevelopment ? `ws://${window.location.hostname}:3002` : 'wss://the-love-media-api.onrender.com');
+const turnUrls = String(import.meta.env.VITE_TURN_URL || '')
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean);
+const iceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  ...(turnUrls.length > 0 && import.meta.env.VITE_TURN_USERNAME && import.meta.env.VITE_TURN_CREDENTIAL
+    ? [{
+      urls: turnUrls,
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL
+    }]
+    : [])
+];
 const stripePaymentLink = 'https://buy.stripe.com/6oU00c4rhgoB83MelKeZ200';
 let currentProfileName = 'Gayjesus';
 let currentAccountCodename = 'Gayjesus';
@@ -3698,9 +3712,7 @@ function openGroupCameraScreen(cameraCount = 4) {
   };
 
   const connectToPeer = async (remotePeerId, stream, shouldOffer) => {
-    const connection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
+    const connection = new RTCPeerConnection({ iceServers });
     peerConnections.set(remotePeerId, connection);
     stream.getTracks().forEach((track) => connection.addTrack(track, stream));
     connection.onicecandidate = ({ candidate }) => {
@@ -4141,9 +4153,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
     const connectToPeer = async (remotePeerId, stream, shouldOffer) => {
       removePeerConnection();
-      peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
+      peerConnection = new RTCPeerConnection({ iceServers });
       if (stream) {
         stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
       }

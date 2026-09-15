@@ -16,6 +16,8 @@ The app uses port `3000` for the web page and port `3002` for accounts and video
 
 The deployed API serves both the WebSocket signaling endpoint and the health check at `https://the-love-media-api.onrender.com/health`. The frontend connects to the signaling endpoint over `wss://the-love-media-api.onrender.com`; no separate WebRTC server URL is needed. WebRTC media uses Google's public STUN server, so a TURN service is still needed for users behind restrictive networks.
 
+To enable TURN, add `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL` to the Static Site environment in Render, then redeploy. `VITE_TURN_URL` may contain multiple comma-separated `turn:` or `turns:` URLs. The credential is sent to browsers because WebRTC clients need it; use short-lived TURN credentials when the provider supports them.
+
 ## Windows desktop app
 
 The project includes a Tauri wrapper for building a lightweight Windows desktop app from the same Vite frontend.
