@@ -14,6 +14,8 @@ A private local queer live chat and social experience.
 
 The app uses port `3000` for the web page and port `3002` for accounts and video signaling. The web port is locked so Vite stops with an error instead of silently changing the URL when port `3000` is already in use.
 
+The deployed API serves both the WebSocket signaling endpoint and the health check at `https://the-love-media-api.onrender.com/health`. The frontend connects to the signaling endpoint over `wss://the-love-media-api.onrender.com`; no separate WebRTC server URL is needed. WebRTC media uses Google's public STUN server, so a TURN service is still needed for users behind restrictive networks.
+
 ## Windows desktop app
 
 The project includes a Tauri wrapper for building a lightweight Windows desktop app from the same Vite frontend.

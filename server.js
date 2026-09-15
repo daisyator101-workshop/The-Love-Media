@@ -326,6 +326,11 @@ const httpServer = createServer(async (request, response) => {
     response.end();
     return;
   }
+  if (request.method === 'GET' && request.url === '/health') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ok: true, websocket: true }));
+    return;
+  }
   if (!request.url?.startsWith('/api/') || request.method !== 'POST') {
     response.writeHead(404);
     response.end();
