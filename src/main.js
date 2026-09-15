@@ -678,6 +678,9 @@ function renderLoginPage() {
           <p class="secondary-text">
             New here? <button class="inline-link-button" id="create-account-link" type="button">Create an account</button>
           </p>
+          <p class="secondary-text">
+            Prefer desktop? <a class="inline-link-button" href="https://github.com/daisyator101-workshop/The-Love-Media/releases/latest" target="_blank" rel="noreferrer">Download the Windows app</a>
+          </p>
         </div>
       </div>
     </div>
