@@ -803,7 +803,7 @@ function renderPrivacyPolicyPage() {
           <h2>Your choices</h2>
           <p>You may choose what profile information to share, stop using the service, clear local browser storage, and request help with account or data questions.</p>
           <h2>Contact</h2>
-          <p>For privacy questions or deletion help, contact the person or organization operating The Love Media through the project repository.</p>
+          <p>The Love Media operates this service. For privacy questions, account help, or deletion requests, email <a href="mailto:daisyato101@gmail.com">daisyato101@gmail.com</a>.</p>
         </div>
         <div class="form-footer">
           <button class="secondary-btn" id="privacy-back-btn" type="button">Back to sign in</button>
