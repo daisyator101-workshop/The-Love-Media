@@ -686,6 +686,9 @@ function renderLoginPage() {
           <p class="secondary-text">
             <button class="inline-link-button" id="privacy-policy-link" type="button">Privacy policy</button>
           </p>
+          <p class="secondary-text">
+            <button class="inline-link-button" id="community-guidelines-link" type="button">Community guidelines</button>
+          </p>
         </div>
       </div>
     </div>
@@ -766,6 +769,7 @@ function renderLoginPage() {
   document.getElementById('create-account-link').addEventListener('click', openCreateAccountPage);
   document.getElementById('forgot-password-link').addEventListener('click', openForgotPasswordPage);
   document.getElementById('privacy-policy-link').addEventListener('click', openPrivacyPolicyPage);
+  document.getElementById('community-guidelines-link').addEventListener('click', openCommunityGuidelinesPage);
 }
 
 function openPrivacyPolicyPage() {
@@ -812,6 +816,46 @@ function renderPrivacyPolicyPage() {
     </div>
   `;
   document.getElementById('privacy-back-btn').addEventListener('click', renderLoginPage);
+}
+
+function openCommunityGuidelinesPage() {
+  window.history.pushState({ screen: 'community-guidelines' }, '', `${window.location.pathname}#community-guidelines`);
+  renderCommunityGuidelinesPage();
+}
+
+function renderCommunityGuidelinesPage() {
+  app.innerHTML = `
+    <div class="app-shell auth-shell">
+      <div class="auth-visual compact-visual">
+        <div class="brand-badge">The Love Media</div>
+        <h1>Make room for people.</h1>
+        <p>Everyone deserves a welcoming place to connect.</p>
+      </div>
+      <div class="login-card legal-card">
+        <div class="login-header">
+          <p class="eyebrow">The Love Media</p>
+          <h1>Community guidelines</h1>
+          <p>Simple rules for keeping the community welcoming and safe.</p>
+        </div>
+        <div class="legal-content">
+          <h2>Zero discrimination</h2>
+          <p>No racism, homophobia, transphobia, sexism, ableism, religious hatred, harassment, threats, or attacks on people for who they are.</p>
+          <h2>Respect and consent</h2>
+          <p>Respect boundaries, do not pressure people, and do not share private messages, images, or personal information without permission.</p>
+          <h2>Report concerns</h2>
+          <p>To report discrimination or harassment, email <a href="mailto:daisyato101@gmail.com?subject=The%20Love%20Media%20community%20report">daisyato101@gmail.com</a>. Include the account codename, what happened, when it happened, and screenshots or other evidence if available. Please hide unrelated private information before sending.</p>
+          <h2>How reports are handled</h2>
+          <p>Reports are reviewed fairly. Depending on the evidence and severity, The Love Media may warn, restrict, suspend, or remove an account. A single screenshot is reviewed as evidence, not treated as automatic proof; context, authenticity, and the reported person’s response may be considered.</p>
+          <h2>Appeals and bad-faith reports</h2>
+          <p>People affected by moderation may request a review by emailing the same address. Deliberately false, manipulated, or retaliatory reports may lead to action against the reporter.</p>
+        </div>
+        <div class="form-footer">
+          <button class="secondary-btn" id="guidelines-back-btn" type="button">Back to sign in</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('guidelines-back-btn').addEventListener('click', renderLoginPage);
 }
 
 function openForgotPasswordPage() {
@@ -970,6 +1014,9 @@ function renderCreateAccountPage() {
           <p class="secondary-text">
             <button class="inline-link-button" id="privacy-policy-link" type="button">Privacy policy</button>
           </p>
+          <p class="secondary-text">
+            <button class="inline-link-button" id="community-guidelines-link" type="button">Community guidelines</button>
+          </p>
         </div>
       </div>
     </div>
@@ -1001,6 +1048,7 @@ function renderCreateAccountPage() {
     renderLoginPage();
   });
   document.getElementById('privacy-policy-link').addEventListener('click', openPrivacyPolicyPage);
+  document.getElementById('community-guidelines-link').addEventListener('click', openCommunityGuidelinesPage);
 }
 
 function normalizeVideoComments(video) {
@@ -4911,6 +4959,10 @@ function renderChatroomWorkspace(profileToView = null) {
 
 function renderInitialRoute() {
   const hash = window.location.hash;
+  if (hash === '#community-guidelines') {
+    renderCommunityGuidelinesPage();
+    return;
+  }
   if (hash === '#privacy') {
     renderPrivacyPolicyPage();
     return;
@@ -4978,6 +5030,10 @@ const handleAuthHistoryBack = (event) => {
   }
   if (window.location.hash === '#privacy' && !document.querySelector('.legal-card')) {
     renderPrivacyPolicyPage();
+    return;
+  }
+  if (window.location.hash === '#community-guidelines' && !document.querySelector('.legal-card')) {
+    renderCommunityGuidelinesPage();
     return;
   }
   if (window.location.hash !== '#donation' && document.querySelector('#donation-modal')) {
