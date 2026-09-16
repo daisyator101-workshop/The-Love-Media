@@ -912,6 +912,11 @@ function renderCreateAccountPage() {
           <p class="secondary-text">
             Already have an account? <button class="inline-link-button" id="back-to-login-link" type="button">Log in</button>
           </p>
+          <p class="secondary-text">
+            <a class="inline-link-button" href="https://github.com/daisyator101-workshop/The-Love-Media/releases/latest" target="_blank" rel="noreferrer">Download Windows app</a>
+            <span aria-hidden="true"> · </span>
+            <a class="inline-link-button" href="https://github.com/daisyator101-workshop/The-Love-Media/releases/latest" target="_blank" rel="noreferrer">Download Android app</a>
+          </p>
         </div>
       </div>
     </div>
@@ -1255,6 +1260,35 @@ async function handleShareVideo(video, buttonEl) {
   const originalText = buttonEl ? buttonEl.textContent : '🔗 Share';
   const shareUrl = window.location.href;
 
+
+async function handleInviteFriend(buttonEl) {
+  const originalText = buttonEl.textContent;
+  const inviteUrl = `${window.location.origin}${window.location.pathname}`;
+  const shareData = {
+    title: 'Join The Love Media',
+    text: 'Come join me on The Love Media.',
+    url: inviteUrl
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      buttonEl.textContent = 'Shared!';
+      window.setTimeout(() => { buttonEl.textContent = originalText; }, 2000);
+      return;
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(inviteUrl);
+    buttonEl.textContent = 'Link copied!';
+    window.setTimeout(() => { buttonEl.textContent = originalText; }, 2000);
+  } catch {
+    window.prompt('Copy this invite link:', inviteUrl);
+  }
+}
   let videoBlob = null;
   const targetMime = 'video/mp4';
   const filename = `${videoTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4`;
@@ -4502,6 +4536,7 @@ function renderChatroomWorkspace(profileToView = null) {
             <button class="secondary-btn header-pill-btn" id="sign-out-btn">Sign out</button>
             <button class="secondary-btn header-pill-btn" id="workspace-gayjesus-blog-btn">Gayjesus Blog</button>
             <button class="secondary-btn header-pill-btn" id="workspace-friends-connect-btn">Friends Connect</button>
+            <button class="secondary-btn header-pill-btn" id="workspace-invite-btn" type="button">Invite a friend</button>
             <button class="secondary-btn header-pill-btn donate-btn" id="workspace-donate-btn">Donate a $1</button>
             <span class="account-count">${accountCountLabel()}</span>
           </div>
@@ -4662,6 +4697,7 @@ function renderChatroomWorkspace(profileToView = null) {
   });
   document.getElementById('workspace-gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('workspace-friends-connect-btn').addEventListener('click', openFriendsConnectPage);
+  document.getElementById('workspace-invite-btn').addEventListener('click', (event) => handleInviteFriend(event.currentTarget));
   document.getElementById('workspace-donate-btn').addEventListener('click', openDonationPopup);
   setupDeleteAccountAction('delete-account-btn', 'account-delete-status');
   const editProfileItem = document.getElementById('edit-profile-item');
