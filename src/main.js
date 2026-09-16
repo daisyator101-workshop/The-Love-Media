@@ -683,6 +683,9 @@ function renderLoginPage() {
             <span aria-hidden="true"> · </span>
             <a class="inline-link-button" href="https://github.com/daisyator101-workshop/The-Love-Media/releases/latest" target="_blank" rel="noreferrer">Download Android app</a>
           </p>
+          <p class="secondary-text">
+            <button class="inline-link-button" id="privacy-policy-link" type="button">Privacy policy</button>
+          </p>
         </div>
       </div>
     </div>
@@ -762,6 +765,53 @@ function renderLoginPage() {
   });
   document.getElementById('create-account-link').addEventListener('click', openCreateAccountPage);
   document.getElementById('forgot-password-link').addEventListener('click', openForgotPasswordPage);
+  document.getElementById('privacy-policy-link').addEventListener('click', openPrivacyPolicyPage);
+}
+
+function openPrivacyPolicyPage() {
+  window.history.pushState({ screen: 'privacy' }, '', `${window.location.pathname}#privacy`);
+  renderPrivacyPolicyPage();
+}
+
+function renderPrivacyPolicyPage() {
+  app.innerHTML = `
+    <div class="app-shell auth-shell">
+      <div class="auth-visual compact-visual">
+        <div class="brand-badge">The Love Media</div>
+        <h1>Privacy, plainly stated.</h1>
+        <p>We collect only what is needed to run accounts, rooms, messages, and payments.</p>
+      </div>
+      <div class="login-card legal-card">
+        <div class="login-header">
+          <p class="eyebrow">The Love Media</p>
+          <h1>Privacy policy</h1>
+          <p>Last updated: September 16, 2026</p>
+        </div>
+        <div class="legal-content">
+          <h2>What we collect</h2>
+          <p>We collect your codename, password credentials, password reset key, profile details, private mail, and messages needed to provide the service. Passwords and reset keys are stored as one-way cryptographic hashes.</p>
+          <h2>How we use it</h2>
+          <p>We use this information to authenticate accounts, show profiles, deliver messages, support room presence and chat, protect the service, and process optional donations or purchases.</p>
+          <h2>Browser storage</h2>
+          <p>Your browser may store remembered login details, profiles, friends, and preferences in local storage. Clear your browser data to remove those local copies. Do not enable password saving on a shared device.</p>
+          <h2>Sharing</h2>
+          <p>We do not sell personal information. Account and message data may be processed by the hosting, database, payment, and infrastructure providers needed to operate the service. WebRTC audio and video may travel directly between participants or through a relay service when enabled.</p>
+          <h2>Payments</h2>
+          <p>Payments are handled by Stripe. We do not store full payment card numbers on our servers. Stripe may process payment information under its own privacy policy.</p>
+          <h2>Retention and deletion</h2>
+          <p>We keep account information while your account is active or as needed to operate the service. You can use the in-app account deletion control. Some records may remain temporarily in backups or be retained when required for security or legal reasons.</p>
+          <h2>Your choices</h2>
+          <p>You may choose what profile information to share, stop using the service, clear local browser storage, and request help with account or data questions.</p>
+          <h2>Contact</h2>
+          <p>For privacy questions or deletion help, contact the person or organization operating The Love Media through the project repository.</p>
+        </div>
+        <div class="form-footer">
+          <button class="secondary-btn" id="privacy-back-btn" type="button">Back to sign in</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('privacy-back-btn').addEventListener('click', renderLoginPage);
 }
 
 function openForgotPasswordPage() {
@@ -917,6 +967,9 @@ function renderCreateAccountPage() {
             <span aria-hidden="true"> · </span>
             <a class="inline-link-button" href="https://github.com/daisyator101-workshop/The-Love-Media/releases/latest" target="_blank" rel="noreferrer">Download Android app</a>
           </p>
+          <p class="secondary-text">
+            <button class="inline-link-button" id="privacy-policy-link" type="button">Privacy policy</button>
+          </p>
         </div>
       </div>
     </div>
@@ -947,6 +1000,7 @@ function renderCreateAccountPage() {
     event.preventDefault();
     renderLoginPage();
   });
+  document.getElementById('privacy-policy-link').addEventListener('click', openPrivacyPolicyPage);
 }
 
 function normalizeVideoComments(video) {
@@ -4857,6 +4911,10 @@ function renderChatroomWorkspace(profileToView = null) {
 
 function renderInitialRoute() {
   const hash = window.location.hash;
+  if (hash === '#privacy') {
+    renderPrivacyPolicyPage();
+    return;
+  }
   if (hash === '#donation') {
     if (!hasAuthenticatedSession()) {
       renderLoginPage();
@@ -4916,6 +4974,10 @@ const handleAuthHistoryBack = (event) => {
   const workspaceHeading = document.querySelector('.workspace-sidebar h1')?.textContent;
   if (window.location.hash === '#donation' && !document.querySelector('#donation-modal')) {
     openDonationPopup();
+    return;
+  }
+  if (window.location.hash === '#privacy' && !document.querySelector('.legal-card')) {
+    renderPrivacyPolicyPage();
     return;
   }
   if (window.location.hash !== '#donation' && document.querySelector('#donation-modal')) {
