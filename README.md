@@ -5,6 +5,8 @@ A private local queer live chat and social experience.
 ## Run locally
 
 1. Install dependencies:
+2. 
+3. 
    npm install
 2. In one terminal, start the app:
    npm run dev
