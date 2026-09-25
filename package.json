@@ -7,7 +7,9 @@
     "dev": "vite",
     "signaling": "node server.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

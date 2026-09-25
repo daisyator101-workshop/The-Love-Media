@@ -8,45 +8,32 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-async function readEnvFiles() {
+async function readEnvFiles() { 
   const envPaths = [
     new URL('./.vscode/.env.txt', import.meta.url),
     new URL('./.env.txt', import.meta.url),
     new URL('./.env', import.meta.url),
-  ];
+  ];}
   const loadedValues = new Map();
 
   for (const envPath of envPaths) {
     try {
-      const contents = await readFile(envPath, 'utf8');
-      const lines = contents.split(/\r?\n/);
-      for (const line of lines) {
+      const content = await readFile(envPath, 'utf8');
+      for (const line of content.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) continue;
-        const separatorIndex = trimmed.indexOf('=');
-        if (separatorIndex === -1) continue;
-        const key = trimmed.slice(0, separatorIndex).trim();
-        let value = trimmed.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, '');
-        if (!key || !value) continue;
-
-        const normalizedValue = value.trim();
-        const placeholderNames = ['replace_me', 'your_stripe_secret_key', 'replace-this'];
-        const looksLikePlaceholder = placeholderNames.some((token) => normalizedValue.toLowerCase().includes(token))
-          || normalizedValue.toLowerCase().includes('replace-me');
-
-        if (looksLikePlaceholder) continue;
-        if (!loadedValues.has(key) || normalizedValue.startsWith('sk_')) {
-          loadedValues.set(key, normalizedValue);
+        const index = trimmed.indexOf('=');
+        if (index === -1) continue;
+        const key = trimmed.substring(0, index).trim();
+        const value = trimmed.substring(index + 1).trim();
+        if (!process.env[key])} {
+          process.env[key] = value;
+          loadedValues.set(key, value);
         }
       }
+      break; // Stop parsing once a file is successfully loaded
     } catch {
-      continue;
-    }
-  }
-
-  for (const [key, value] of loadedValues) {
-    process.env[key] = value;
-  }
+      // Quietly try the next path if this one fails to read
 }
 
 await readEnvFiles();
@@ -497,6 +484,36 @@ server.on('connection', (socket) => {
   });
 });
 
+const PORT = process.env.PORT || 3000;
+
 httpServer.listen(port, () => {
   console.log(`WebRTC signaling server listening on ws://localhost:${port}`);
 });
+
+// Automatically clean up all expired messages every 24 hours
+const DELETION_INTERVAL = 24 * 60 * 60 * 1000; 
+
+setInterval(async () => {
+  console.log('Running master database maintenance: Purging expired messages... 🧹');
+  try {
+    // 1. Wipe onscreen chat messages older than 30 days
+    const purgeOnscreen = `
+      DELETE FROM messages 
+      WHERE created_at < NOW() - INTERVAL '30 days';
+    `;
+    const liveResult = await pool.query(purgeOnscreen);
+    console.log(`Onscreen purge complete: Removed ${liveResult.rowCount} chat records.`);
+
+    // 2. Wipe offscreen/offline PM mail older than 30 days
+    const purgeOffscreen = `
+      DELETE FROM offline_pm_mail 
+      WHERE created_at < NOW() - INTERVAL '30 days';
+    `;
+    const mailResult = await pool.query(purgeOffscreen);
+    console.log(`Offscreen purge complete: Removed ${mailResult.rowCount} unread notices.`);
+
+    console.log('Master database cleanup successful! system memory is fully optimized.');
+  } catch (err) {
+    console.error('Error executing master 30-day deletion worker:', err);
+  }
+}, DELETION_INTERVAL);

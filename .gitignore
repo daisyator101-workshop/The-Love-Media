@@ -4,3 +4,10 @@ dist/
 .env.*
 .vscode/.env.txt
 !.env.example
+
+# MSIX / Windows Store packaging
+*.pfx
+*.cer
+*.msix
+*.msixupload
+msix-identity.ps1
