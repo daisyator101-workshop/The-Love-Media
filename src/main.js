@@ -2,14 +2,29 @@ import './index.css';
 
 const app = document.getElementById('root');
 const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const rawApiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
-const rawWsUrl = (import.meta.env.VITE_WS_URL || '').trim().replace(/\/+$/, '');
-const apiBaseUrl = rawApiUrl || (isLocalDevelopment ? `http://${window.location.hostname}:3002` : 'https://the-love-media-api.onrender.com');
-const webSocketBaseUrl = rawWsUrl || (isLocalDevelopment 
-  ? `ws://${window.location.hostname}:3002` 
-  : (rawApiUrl 
-      ? rawApiUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') 
-      : 'wss://the-love-media-api.onrender.com'));
+
+function getApiBaseUrl() {
+  const envUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+  const storedUrl = (localStorage.getItem('the-love-media-api-url') || '').trim().replace(/\/+$/, '');
+  if (envUrl) return envUrl;
+  if (storedUrl) return storedUrl;
+  if (isLocalDevelopment) return `http://${window.location.hostname}:3002`;
+  return '';
+}
+
+function getWebSocketBaseUrl() {
+  const envWs = (import.meta.env.VITE_WS_URL || '').trim().replace(/\/+$/, '');
+  const storedWs = (localStorage.getItem('the-love-media-ws-url') || '').trim().replace(/\/+$/, '');
+  if (envWs) return envWs;
+  if (storedWs) return storedWs;
+  const api = getApiBaseUrl();
+  if (api) return api.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+  if (isLocalDevelopment) return `ws://${window.location.hostname}:3002`;
+  return '';
+}
+
+let apiBaseUrl = getApiBaseUrl();
+let webSocketBaseUrl = getWebSocketBaseUrl();
 let currentProfileName = 'Gayjesus';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
@@ -232,12 +247,31 @@ async function rememberBrowserCredential(codename, password, rememberPassword) {
 }
 
 async function accountApi(path, payload) {
+  let targetBaseUrl = getApiBaseUrl();
+  if (!targetBaseUrl) {
+    const entered = window.prompt(
+      'Your Koyeb backend server URL is not configured.\n\nPlease enter your Koyeb backend URL (for example: https://my-app.koyeb.app):',
+      'https://'
+    );
+    if (entered && entered.trim() && entered.trim() !== 'https://') {
+      const cleanUrl = entered.trim().replace(/\/+$/, '');
+      localStorage.setItem('the-love-media-api-url', cleanUrl);
+      apiBaseUrl = cleanUrl;
+      webSocketBaseUrl = getWebSocketBaseUrl();
+      targetBaseUrl = cleanUrl;
+      const statusLabel = document.getElementById('server-status-label');
+      if (statusLabel) statusLabel.textContent = cleanUrl;
+    } else {
+      throw new Error('Backend URL is required. Click "(set URL)" below to enter your Koyeb backend URL.');
+    }
+  }
+
   let lastError;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const headers = { 'Content-Type': 'application/json' };
     if (currentSessionToken) headers.Authorization = `Bearer ${currentSessionToken}`;
     try {
-      const response = await fetch(`${apiBaseUrl}${path}`, {
+      const response = await fetch(`${targetBaseUrl}${path}`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -253,7 +287,7 @@ async function accountApi(path, payload) {
         continue;
       }
       if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
-        throw new Error(`Cannot reach backend at "${apiBaseUrl}". Verify Koyeb is healthy and VITE_API_URL is set in Vercel.`);
+        throw new Error(`Cannot reach backend at "${targetBaseUrl}". Verify Koyeb is healthy or click "(set URL)" to update.`);
       }
       throw error;
     }
@@ -381,6 +415,10 @@ function renderLoginPage() {
           <p class="secondary-text">
             New here? <button class="inline-link-button" id="create-account-link" type="button">Create an account</button>
           </p>
+          <p class="secondary-text" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.75;">
+            Server: <span id="server-status-label">${getApiBaseUrl() || 'Not configured'}</span>
+            <button class="inline-link-button" id="configure-server-link" type="button" style="margin-left: 4px;">(set URL)</button>
+          </p>
         </div>
       </div>
     </div>
@@ -461,6 +499,18 @@ function renderLoginPage() {
   });
   document.getElementById('create-account-link').addEventListener('click', openCreateAccountPage);
   document.getElementById('forgot-password-link').addEventListener('click', openForgotPasswordPage);
+  document.getElementById('configure-server-link')?.addEventListener('click', () => {
+    const current = getApiBaseUrl() || 'https://';
+    const entered = window.prompt('Enter your Koyeb backend URL (for example: https://my-app.koyeb.app):', current);
+    if (entered && entered.trim() && entered.trim() !== 'https://') {
+      const clean = entered.trim().replace(/\/+$/, '');
+      localStorage.setItem('the-love-media-api-url', clean);
+      apiBaseUrl = clean;
+      webSocketBaseUrl = getWebSocketBaseUrl();
+      const label = document.getElementById('server-status-label');
+      if (label) label.textContent = clean;
+    }
+  });
 }
 
 function openForgotPasswordPage() {
