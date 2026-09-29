@@ -252,6 +252,9 @@ async function accountApi(path, payload) {
         await new Promise((resolve) => window.setTimeout(resolve, 800));
         continue;
       }
+      if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
+        throw new Error(`Cannot reach backend at "${apiBaseUrl}". Verify Koyeb is healthy and VITE_API_URL is set in Vercel.`);
+      }
       throw error;
     }
   }
