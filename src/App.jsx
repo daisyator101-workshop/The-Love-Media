@@ -40,7 +40,9 @@ function App() {
     setCheckoutStatus('');
 
     try {
-      const response = await fetch('http://localhost:3002/api/create-checkout-session', {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const apiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '') || (isLocal ? `http://${window.location.hostname}:3002` : '');
+      const response = await fetch(`${apiUrl}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

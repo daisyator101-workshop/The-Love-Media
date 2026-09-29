@@ -11,3 +11,6 @@ dist/
 *.msix
 *.msixupload
 msix-identity.ps1
+.aider*
+src-tauri/target/
+src-tauri/gen/
