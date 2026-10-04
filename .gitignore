@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+.vscode/.env.txt
+!.env.example
+
+# MSIX / Windows Store packaging
+*.pfx
+*.cer
+*.msix
+*.msixupload
+msix-identity.ps1
+.aider*
+src-tauri/target/
+src-tauri/gen/

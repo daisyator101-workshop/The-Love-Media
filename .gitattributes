@@ -1,0 +1,4 @@
+# Auto detect text files and perform LF normalization
+* text=au
+cd c:/Users/daisy/.lmstudio/apps/bionic/projects/d49037d8-47f4-5808-9028-c707de117f8f/workspace/Brandons workshop/The-Love-Media
+ls -l
