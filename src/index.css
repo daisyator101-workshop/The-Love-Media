@@ -668,6 +668,17 @@ button, input {
   display: none;
 }
 
+.profile-menu-name {
+  margin: 0;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .profile-menu-item {
   border: none;
   border-radius: 999px;

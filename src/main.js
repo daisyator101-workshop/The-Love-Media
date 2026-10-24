@@ -2046,6 +2046,12 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
     const roomMateMenu = document.createElement('div');
     roomMateMenu.className = 'profile-menu hidden';
+
+    const roomMateMenuName = document.createElement('p');
+    roomMateMenuName.className = 'profile-menu-name';
+    roomMateMenuName.textContent = name;
+    roomMateMenu.appendChild(roomMateMenuName);
+
     ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
       const action = document.createElement('button');
       action.className = 'profile-menu-item';
