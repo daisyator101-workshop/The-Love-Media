@@ -16,6 +16,28 @@ A private local queer live chat and social experience.
 
 The app uses port `3000` for the web page and port `3002` for accounts and video signaling. The web port is locked so Vite stops with an error instead of silently changing the URL when port `3000` is already in use.
 
+## Free hosting on Render
+
+The static site and the API can both stay on Render's free plan.
+
+- The static site never sleeps.
+- The API sleeps after 15 minutes without traffic and needs about a minute to wake.
+  A free uptime monitor (for example UptimeRobot) that requests
+  `https://the-love-media-api.onrender.com/api/health` every 5 minutes keeps it
+  warm; 750 free instance-hours per month covers one always-on service.
+- Render's **free Postgres is deleted 30 days after creation**, and the blueprint
+  in `render.yaml` asks for the paid `basic-256mb` plan instead. Use a free Neon
+  database: create a project at https://console.neon.tech (no card required),
+  copy its connection string, and set it as `DATABASE_URL` on the API service in
+  Render. The server picks it up with no code changes.
+
+## App download link
+
+The login page footer links to the app installer. Set `VITE_APP_DOWNLOAD_URL` to
+the public installer URL (a Microsoft Store listing, a Google Play listing, or a
+hosted `.msix`/`.exe` file) and rebuild. Until it is set, the login page shows
+"App download coming soon" rather than a broken link.
+
 ## Stripe donation setup
 
 1. In the project folder, copy `.env.example` and name the copy `.env`.

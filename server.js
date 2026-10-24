@@ -85,22 +85,29 @@ function isOriginAllowed(origin) {
   return false;
 }
 const authRateLimits = new Map();
-const authRateLimitWindowMs = 15 * 60 * 1000;
-const authRateLimitMaxAttempts = 5;
+const authRateLimitWindowMs = 5 * 60 * 1000;
+const authRateLimitMaxAttempts = 8;
 const sessions = new Map();
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 const databasePool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
+if (!databasePool) {
+  console.warn('[the-love-media] DATABASE_URL is not set - accounts are stored in accounts.json and will be lost on redeploy.');
+}
 let databaseReady = false;
 
 // --- Utility Functions ---
 
 function getClientAddress(request) {
+  const forwarded = request.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
   return request.socket.remoteAddress || 'unknown';
 }
 
-function enforceAuthRateLimit(request) {
+function checkAuthRateLimit(request) {
   const key = `${getClientAddress(request)}:${request.url}`;
   const now = Date.now();
   const recentAttempts = (authRateLimits.get(key) || []).filter((timestamp) => now - timestamp < authRateLimitWindowMs);
@@ -110,6 +117,12 @@ function enforceAuthRateLimit(request) {
     error.statusCode = 429;
     throw error;
   }
+}
+
+function recordAuthFailure(request) {
+  const key = `${getClientAddress(request)}:${request.url}`;
+  const now = Date.now();
+  const recentAttempts = (authRateLimits.get(key) || []).filter((timestamp) => now - timestamp < authRateLimitWindowMs);
   recentAttempts.push(now);
   authRateLimits.set(key, recentAttempts);
 }
@@ -327,7 +340,7 @@ httpServer.on('request', async (request, response) => {
   try {
     // Authentication Rate Limiting check for sensitive endpoints
     if (['/api/accounts', '/api/login', '/api/reset-password'].includes(request.url)) {
-      enforceAuthRateLimit(request);
+      checkAuthRateLimit(request);
     }
     
     const body = await requestBody(request);
@@ -429,6 +442,11 @@ httpServer.on('request', async (request, response) => {
       });
       
       await saveAccounts(accounts);
+      
+      // Clear rate limit on successful account creation
+      const rateLimitKey = `${getClientAddress(request)}:${request.url}`;
+      authRateLimits.delete(rateLimitKey);
+      
       response.writeHead(201, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ codename }));
       return;
@@ -439,6 +457,10 @@ httpServer.on('request', async (request, response) => {
       
       if (!account) throw new Error('Account not found.');
       if (!passwordsMatch(String(body.password || ''), account)) throw new Error('That codename or password is not correct.');
+      
+      // Clear rate limit on successful login so the user isn't stuck in lockout
+      const rateLimitKey = `${getClientAddress(request)}:${request.url}`;
+      authRateLimits.delete(rateLimitKey);
       
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ codename: account.codename, profile: account.profile || {}, sessionToken: createSession(account) }));
@@ -462,6 +484,11 @@ httpServer.on('request', async (request, response) => {
       delete account.password; // Remove old password field
       
       await saveAccounts(accounts);
+      
+      // Clear rate limit on successful password reset
+      const rateLimitKey = `${getClientAddress(request)}:${request.url}`;
+      authRateLimits.delete(rateLimitKey);
+      
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ reset: true }));
       return;
@@ -508,6 +535,9 @@ httpServer.on('request', async (request, response) => {
     response.end();
 
   } catch (error) {
+    if (['/api/accounts', '/api/login', '/api/reset-password'].includes(request.url) && error.statusCode !== 429) {
+      recordAuthFailure(request);
+    }
     console.error(`Request error for ${request.url}:`, error.message);
     response.writeHead(error.statusCode || 400, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ error: error.message }));

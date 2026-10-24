@@ -23,6 +23,10 @@ function getWebSocketBaseUrl() {
   return '';
 }
 
+function getAppDownloadUrl() {
+  return (import.meta.env.VITE_APP_DOWNLOAD_URL || '').trim();
+}
+
 let apiBaseUrl = getApiBaseUrl();
 let webSocketBaseUrl = getWebSocketBaseUrl();
 let currentProfileName = 'Gayjesus';
@@ -342,6 +346,7 @@ function renderLoginPage() {
     window.history.pushState({ screen: 'forgot-password' }, '', window.location.pathname);
     renderForgotPasswordPage();
   const rememberedCredentials = getRememberedCredentials();
+  const appDownloadUrl = getAppDownloadUrl();
   app.innerHTML = `
     <div class="app-shell auth-shell">
       <div class="floating-hearts" aria-hidden="true">
@@ -415,7 +420,14 @@ function renderLoginPage() {
           <p class="secondary-text">
             New here? <button class="inline-link-button" id="create-account-link" type="button">Create an account</button>
           </p>
-          <p class="secondary-text" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.75;">
+          <div class="app-download">
+            <p class="app-download-label">Get the app</p>
+            ${appDownloadUrl
+              ? `<a class="app-download-btn" id="app-download-btn" href="${appDownloadUrl}" rel="noopener">Download for your phone, computer or device</a>`
+              : `<span class="app-download-btn is-unavailable" id="app-download-btn">App download coming soon</span>`}
+            <p class="app-download-note">Windows app for the Microsoft Store, Android for Google Play.</p>
+          </div>
+          <p class="secondary-text" style="margin-top: 10px; font-size: 0.75rem; opacity: 0.6;">
             Server: <span id="server-status-label">${getApiBaseUrl() || 'Not configured'}</span>
             <button class="inline-link-button" id="configure-server-link" type="button" style="margin-left: 4px;">(set URL)</button>
           </p>
@@ -984,6 +996,65 @@ async function openWelcomeScreenShare(label = 'Welcome & updates') {
   } catch {
     return;
   }
+}async function openWelcomeScreenAndWebcamShare(label = 'Welcome & updates') {
+  if (!navigator.mediaDevices?.getDisplayMedia || !navigator.mediaDevices?.getUserMedia) {
+    window.alert('Screen sharing or webcam is not available in this browser.');
+    return;
+  }
+
+  try {
+    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    let webcamStream = null;
+    try {
+      webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch (err) {
+      console.warn('Webcam not available, proceeding with screen only', err);
+    }
+
+    const existingShare = document.getElementById('welcome-screen-share');
+    if (existingShare) existingShare.remove();
+
+    const share = document.createElement('div');
+    share.className = 'group-camera-screen welcome-screen-share';
+    share.id = 'welcome-screen-share';
+    share.innerHTML = `
+      <div class="group-camera-screen-header">
+        <div>
+          <p class="eyebrow">${label}</p>
+          <h2>Live screen & webcam share</h2>
+        </div>
+        <button class="secondary-btn" id="stop-welcome-screen-share-btn" type="button">Stop sharing</button>
+      </div>
+      <div class="welcome-screen-share-preview" style="display: flex; gap: 16px;">
+        <video id="welcome-screen-share-video" autoplay playsinline style="flex: 2; border-radius: 8px;"></video>
+        ${webcamStream ? `<video id="welcome-webcam-share-video" autoplay playsinline style="flex: 1; border-radius: 8px; object-fit: cover; max-height: 250px;" muted></video>` : ''}
+      </div>
+      <p class="group-camera-screen-status">Your screen ${webcamStream ? 'and webcam are' : 'is'} being shared in this preview.</p>
+    `;
+    document.getElementById('root').appendChild(share);
+    
+    const screenVideo = document.getElementById('welcome-screen-share-video');
+    screenVideo.srcObject = screenStream;
+    
+    if (webcamStream) {
+      const webcamVideo = document.getElementById('welcome-webcam-share-video');
+      if (webcamVideo) webcamVideo.srcObject = webcamStream;
+    }
+
+    const stopSharing = () => {
+      screenStream.getTracks().forEach((track) => track.stop());
+      if (webcamStream) {
+        webcamStream.getTracks().forEach((track) => track.stop());
+      }
+      share.remove();
+    };
+    
+    screenStream.getVideoTracks()[0].addEventListener('ended', stopSharing, { once: true });
+    document.getElementById('stop-welcome-screen-share-btn').addEventListener('click', stopSharing);
+  } catch (err) {
+    console.error(err);
+    return;
+  }
 }
 
 function openWelcomeVideosModal() {
@@ -1007,9 +1078,10 @@ function openWelcomeVideosModal() {
           <label for="welcome-video-title">Video title</label>
           <input id="welcome-video-title" type="text" placeholder="Welcome reel title" />
         </div>
-        <div class="profile-editor-actions" style="margin-top: 12px;">
+        <div class="profile-editor-actions video-actions" style="margin-top: 12px;">
           <button class="small-btn" id="record-welcome-video-btn" type="button">Record video</button>
           <button class="small-btn" id="start-welcome-screen-share-btn" type="button">Start screen share</button>
+          <button class="small-btn" id="start-welcome-screen-webcam-btn" type="button">Screen & Webcam</button>
         </div>
         <p class="private-message-status" id="welcome-video-status" aria-live="polite"></p>
       ` : `
@@ -1026,13 +1098,6 @@ function openWelcomeVideosModal() {
     </div>
   `;
 
-// Inject minimal backdrop style for modal visibility
-const welcomeStyle = document.createElement('style');
-welcomeStyle.textContent = `
-  .profile-editor-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-  .profile-editor-card { background:#fff; padding:1.5rem; border-radius:8px; max-width:480px; width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
-`;
-document.head.appendChild(welcomeStyle);
 
 document.body.appendChild(modal);
 
@@ -1068,13 +1133,11 @@ if (isGayjesus) {
     });
   });
   document.getElementById('start-welcome-screen-share-btn').addEventListener('click', openWelcomeScreenShare);
+  document.getElementById('start-welcome-screen-webcam-btn').addEventListener('click', () => openWelcomeScreenAndWebcamShare('Welcome & updates'));
 }
 
-// Clean up injected style on close
 document.getElementById('close-welcome-videos-btn').addEventListener('click', () => {
-  welcomeStyle.remove();
   document.getElementById('welcome-videos-modal').remove();
-  window.history.back();
 });
 }
 
@@ -1120,9 +1183,10 @@ function openGayjesusBlogModal() {
           <label for="blog-custom-topic">Topic</label>
           <input id="blog-custom-topic" type="text" placeholder="Example: Dating, Advice, Lifestyle" />
         </div>
-        <div class="profile-editor-actions" style="margin-top: 12px;">
+        <div class="profile-editor-actions video-actions" style="margin-top: 12px;">
           <button class="small-btn" id="record-blog-video-btn" type="button">Record video</button>
           <button class="small-btn" id="start-blog-screen-share-btn" type="button">Start screen share</button>
+          <button class="small-btn" id="start-blog-screen-webcam-btn" type="button">Screen & Webcam</button>
         </div>
         <p class="private-message-status" id="blog-video-status" aria-live="polite"></p>
       ` : `
@@ -1139,13 +1203,6 @@ function openGayjesusBlogModal() {
     </div>
   `;
 
-// Inject minimal backdrop style for modal visibility
-const gayjesusStyle = document.createElement('style');
-gayjesusStyle.textContent = `
-  .profile-editor-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-  .profile-editor-card { background:#fff; padding:1.5rem; border-radius:8px; max-width:480px; width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
-`;
-document.head.appendChild(gayjesusStyle);
 
 document.body.appendChild(modal);
 
@@ -1183,13 +1240,11 @@ if (isGayjesus) {
     });
   });
   document.getElementById('start-blog-screen-share-btn').addEventListener('click', () => openWelcomeScreenShare('Gayjesus blog'));
+  document.getElementById('start-blog-screen-webcam-btn').addEventListener('click', () => openWelcomeScreenAndWebcamShare('Gayjesus blog'));
 }
 
-// Clean up injected style on close
 document.getElementById('close-gayjesus-blog-btn').addEventListener('click', () => {
-  gayjesusStyle.remove();
   document.getElementById('gayjesus-blog-modal').remove();
-  window.history.back();
 });
 }
 
@@ -1658,7 +1713,14 @@ function openGroupChatMessagePopup() {
         <div class="emoji-message-controls">
           <button class="secondary-btn emoji-picker-button" id="group-emoji-btn" type="button" aria-label="Add emoji">😊</button>
           <div class="emoji-picker hidden" id="group-emoji-picker">
-            <button type="button">😀</button><button type="button">😂</button><button type="button">🥰</button><button type="button">😍</button><button type="button">😎</button><button type="button">❤️</button><button type="button">🏳️‍🌈</button><button type="button">🎉</button>
+            <button type="button">🏳️‍🌈</button><button type="button">🏳️‍⚧️</button><button type="button">🌈</button><button type="button">⚧️</button>
+            <button type="button">👭</button><button type="button">👬</button><button type="button">🧑‍🤝‍🧑</button><button type="button">💑</button>
+            <button type="button">👩‍❤️‍👩</button><button type="button">👨‍❤️‍👨</button><button type="button">👩‍❤️‍💋‍👩</button><button type="button">👨‍❤️‍💋‍👨</button>
+            <button type="button">🦄</button><button type="button">💖</button><button type="button">💜</button><button type="button">💙</button>
+            <button type="button">🥰</button><button type="button">😍</button><button type="button">❤️</button><button type="button">🧡</button>
+            <button type="button">💛</button><button type="button">💚</button><button type="button">❤️‍🔥</button><button type="button">💕</button>
+            <button type="button">✨</button><button type="button">🪩</button><button type="button">😀</button><button type="button">😂</button>
+            <button type="button">😎</button><button type="button">🎉</button><button type="button">💪</button><button type="button">✊</button>
           </div>
         </div>
         <button class="small-btn" id="send-group-message-btn">Send</button>
@@ -1921,7 +1983,14 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
               <div class="emoji-message-controls">
                 <button class="secondary-btn emoji-picker-button" id="room-emoji-btn" type="button" aria-label="Add emoji">😊</button>
                 <div class="emoji-picker hidden" id="room-emoji-picker">
-                  <button type="button">😀</button><button type="button">😂</button><button type="button">🥰</button><button type="button">😍</button><button type="button">😎</button><button type="button">❤️</button><button type="button">🏳️‍🌈</button><button type="button">🎉</button>
+                  <button type="button">🏳️‍🌈</button><button type="button">🏳️‍⚧️</button><button type="button">🌈</button><button type="button">⚧️</button>
+                  <button type="button">👭</button><button type="button">👬</button><button type="button">🧑‍🤝‍🧑</button><button type="button">💑</button>
+                  <button type="button">👩‍❤️‍👩</button><button type="button">👨‍❤️‍👨</button><button type="button">👩‍❤️‍💋‍👩</button><button type="button">👨‍❤️‍💋‍👨</button>
+                  <button type="button">🦄</button><button type="button">💖</button><button type="button">💜</button><button type="button">💙</button>
+                  <button type="button">🥰</button><button type="button">😍</button><button type="button">❤️</button><button type="button">🧡</button>
+                  <button type="button">💛</button><button type="button">💚</button><button type="button">❤️‍🔥</button><button type="button">💕</button>
+                  <button type="button">✨</button><button type="button">🪩</button><button type="button">😀</button><button type="button">😂</button>
+                  <button type="button">😎</button><button type="button">🎉</button><button type="button">💪</button><button type="button">✊</button>
                 </div>
               </div>
               <button class="small-btn" id="send-room-message-btn">Send</button>
@@ -2111,7 +2180,14 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         <div class="emoji-message-controls">
           <button class="secondary-btn emoji-picker-button" id="private-emoji-btn" type="button" aria-label="Add emoji">😊</button>
           <div class="emoji-picker hidden" id="private-emoji-picker">
-            <button type="button">😀</button><button type="button">😂</button><button type="button">🥰</button><button type="button">😍</button><button type="button">😎</button><button type="button">❤️</button><button type="button">🏳️‍🌈</button><button type="button">🎉</button>
+            <button type="button">🏳️‍🌈</button><button type="button">🏳️‍⚧️</button><button type="button">🌈</button><button type="button">⚧️</button>
+            <button type="button">👭</button><button type="button">👬</button><button type="button">🧑‍🤝‍🧑</button><button type="button">💑</button>
+            <button type="button">👩‍❤️‍👩</button><button type="button">👨‍❤️‍👨</button><button type="button">👩‍❤️‍💋‍👩</button><button type="button">👨‍❤️‍💋‍👨</button>
+            <button type="button">🦄</button><button type="button">💖</button><button type="button">💜</button><button type="button">💙</button>
+            <button type="button">🥰</button><button type="button">😍</button><button type="button">❤️</button><button type="button">🧡</button>
+            <button type="button">💛</button><button type="button">💚</button><button type="button">❤️‍🔥</button><button type="button">💕</button>
+            <button type="button">✨</button><button type="button">🪩</button><button type="button">😀</button><button type="button">😂</button>
+            <button type="button">😎</button><button type="button">🎉</button><button type="button">💪</button><button type="button">✊</button>
           </div>
         </div>
         <p class="private-message-status" id="private-message-status" aria-live="polite"></p>
@@ -2286,12 +2362,37 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     pendingPrivateMessageFriend = null;
     openPrivateMessage(friendToMessage);
   }
-    roomMate.addEventListener('click', () => {
-      roomMateMenu.classList.toggle('hidden');
+    roomMate.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = roomMateMenu.classList.contains('hidden');
+      document.querySelectorAll('#room-mates-list .profile-menu').forEach(m => m.classList.add('hidden'));
+      if (isHidden) {
+        const rect = roomMate.getBoundingClientRect();
+        roomMateMenu.style.position = 'fixed';
+        // Center it vertically on the screen to prevent it from going off the bottom
+        roomMateMenu.style.top = '50%';
+        // Keep it horizontally centered with the button on the right side
+        roomMateMenu.style.left = `${rect.left + (rect.width / 2)}px`;
+        roomMateMenu.style.transform = 'translate(-50%, -50%)';
+        roomMateMenu.classList.remove('hidden');
+      }
     });
     roomMateEntry.append(roomMate, roomMateMenu);
     roomMatesList.appendChild(roomMateEntry);
   });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.room-mate-trigger') && !e.target.closest('.profile-menu')) {
+      document.querySelectorAll('#room-mates-list .profile-menu').forEach(m => m.classList.add('hidden'));
+    }
+  });
+
+  const sidePanel = document.getElementById('room-mates-list').parentElement;
+  if (sidePanel) {
+    sidePanel.addEventListener('scroll', () => {
+      document.querySelectorAll('#room-mates-list .profile-menu').forEach(m => m.classList.add('hidden'));
+    });
+  }
 
   document.getElementById('exit-room-btn').addEventListener('click', () => {
     groupChatActive = false;

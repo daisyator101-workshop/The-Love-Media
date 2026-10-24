@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import './index.css';
 
 const liveRooms = [
-  { name: 'Sunset Lounge', members: '1.2k', vibe: 'DJ set • open mic' },
-  { name: 'Night Market', members: '840', vibe: 'Late-night chats' },
-  { name: 'Afterglow', members: '620', vibe: 'Casual hangout' },
+  { name: 'Sunset Lounge 🌇', members: '1.2k', vibe: 'DJ set • open mic 🎤' },
+  { name: 'Night Market 🌙', members: '840', vibe: 'Late-night chats 💬' },
+  { name: 'Afterglow 💖', members: '620', vibe: 'Casual hangout ✌️' },
 ];
 
 const feedPosts = [
@@ -74,8 +74,8 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">QueerPulse</p>
-          <h1>Live, social, and welcoming.</h1>
+          <p className="eyebrow">QueerPulse 🏳️‍🌈🏳️‍⚧️</p>
+          <h1>Live, social, and welcoming. 💖✨</h1>
         </div>
         <div className="topbar-actions">
           <button className="secondary-btn" type="button">Start</button>
@@ -90,10 +90,10 @@ function App() {
       <main className="dashboard">
         <section className="hero-card">
           <div className="hero-copy">
-            <p className="pill">Now live</p>
-            <h2>Find your people in real time.</h2>
-            <p>This is a place where the lbtq+ community can come together and share our love, devotion, and connect to find our happiness.</p>
-            <p>A vibrant social app concept for queer nightlife, everyday chats, and spontaneous connection.</p>
+            <p className="pill">Now live 🔴</p>
+            <h2>Find your people in real time. 🌍</h2>
+            <p>This is a place where the LGBTQ+ 🏳️‍🌈🏳️‍⚧️ community can come together and share our love, devotion, and connect to find our happiness. 🥰</p>
+            <p>A vibrant social app concept for queer nightlife 🪩, everyday chats ☕, and spontaneous connection ⚡.</p>
           </div>
           <div className="stats-grid">
             <div><strong>24k+</strong><span>members</span></div>
@@ -133,9 +133,21 @@ function App() {
               </div>
             ))}
           </div>
-          <div className="chat-input">
-            <input type="text" placeholder="Say something lovely..." />
-            <button>Send</button>
+          <div className="chat-input-wrapper">
+            <div className="quick-emojis" style={{ display: 'flex', gap: '8px', marginBottom: '8px', padding: '0 8px' }}>
+              <button type="button" title="Pride Flag" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>🏳️‍🌈</button>
+              <button type="button" title="Transgender Flag" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>🏳️‍⚧️</button>
+              <button type="button" title="Sparkling Heart" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>💖</button>
+              <button type="button" title="Rainbow" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>🌈</button>
+              <button type="button" title="Women Holding Hands" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>👭</button>
+              <button type="button" title="Men Holding Hands" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>👬</button>
+              <button type="button" title="People Holding Hands" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>🧑‍🤝‍🧑</button>
+              <button type="button" title="Unicorn" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>🦄</button>
+            </div>
+            <div className="chat-input">
+              <input type="text" placeholder="Say something lovely..." />
+              <button>Send</button>
+            </div>
           </div>
         </section>
 
