@@ -25,11 +25,10 @@ The static site and the API can both stay on Render's free plan.
   A free uptime monitor (for example UptimeRobot) that requests
   `https://the-love-media-api.onrender.com/api/health` every 5 minutes keeps it
   warm; 750 free instance-hours per month covers one always-on service.
-- Render's **free Postgres is deleted 30 days after creation**, and the blueprint
-  in `render.yaml` asks for the paid `basic-256mb` plan instead. Use a free Neon
-  database: create a project at https://console.neon.tech (no card required),
-  copy its connection string, and set it as `DATABASE_URL` on the API service in
-  Render. The server picks it up with no code changes.
+- Render's **free Postgres is deleted 30 days after creation**. Use a free Neon
+  database instead: create a project at https://console.neon.tech (no card
+  required), copy its connection string, and set it as `DATABASE_URL` on the API
+  service in Render. The server picks it up with no code changes.
 
 ## App download link
 
