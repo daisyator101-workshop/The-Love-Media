@@ -42,6 +42,7 @@ let groupChatInvites = [];
 let roomCounts = {};
 let roomMembers = {};
 let roomPresenceSocket = null;
+let roomMatesRenderer = null;
 let accounts = JSON.parse(localStorage.getItem('the-love-media-accounts') || '[]');
 let privateMail = JSON.parse(localStorage.getItem('the-love-media-private-mail') || '{}');
 const privateMessageLifetime = 30 * 24 * 60 * 60 * 1000;
@@ -163,6 +164,7 @@ function connectRoomPresence(roomName = null) {
     roomMembers = message.members || {};
     updateFeaturedRoomTiles();
     updateRadarMembers();
+    roomMatesRenderer?.();
   };
 }
 
@@ -2123,9 +2125,115 @@ function openGroupChatMessagePopup() {
   });
 }
 
+/**
+ * Joins a video room on the signaling server and connects to everyone in it.
+ * The private camera uses a room of two; the group camera uses the room name.
+ */
+function createVideoRoomConnection({ room, stream, onPeer, onPeerLeft, onStatus = () => {} }) {
+  const peerConnections = new Map();
+  const peerId = crypto.randomUUID();
+  let socket = null;
+  let closed = false;
+
+  const send = (message) => {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  };
+
+  const dropPeer = (remotePeerId) => {
+    peerConnections.get(remotePeerId)?.close();
+    peerConnections.delete(remotePeerId);
+    onPeerLeft(remotePeerId);
+  };
+
+  const connectToPeer = async (remotePeerId, codename, shouldOffer) => {
+    if (closed || !remotePeerId || remotePeerId === peerId) return null;
+    const existing = peerConnections.get(remotePeerId);
+    if (existing) return existing;
+
+    const connection = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    peerConnections.set(remotePeerId, connection);
+    stream.getTracks().forEach((track) => connection.addTrack(track, stream));
+    connection.onicecandidate = ({ candidate }) => {
+      if (candidate) send({ type: 'candidate', to: remotePeerId, candidate });
+    };
+    connection.ontrack = ({ streams }) => onPeer(remotePeerId, streams[0], codename);
+    connection.onconnectionstatechange = () => {
+      if (['failed', 'closed', 'disconnected'].includes(connection.connectionState)) dropPeer(remotePeerId);
+    };
+
+    if (shouldOffer) {
+      await connection.setLocalDescription(await connection.createOffer());
+      send({
+        type: 'offer',
+        to: remotePeerId,
+        codename: currentProfileName,
+        description: connection.localDescription
+      });
+    }
+    return connection;
+  };
+
+  socket = new WebSocket(webSocketBaseUrl);
+  socket.onopen = () => {
+    send({ type: 'auth', sessionToken: currentSessionToken });
+    send({ type: 'join', room, peerId });
+  };
+  socket.onerror = () => {
+    if (!closed) onStatus('Unable to connect to the video server.');
+  };
+  socket.onmessage = async ({ data }) => {
+    let message;
+    try {
+      message = JSON.parse(data);
+    } catch {
+      return;
+    }
+    try {
+      if (message.type === 'existing-peer') {
+        for (const peer of message.peers || []) await connectToPeer(peer.peerId, peer.codename, true);
+      }
+      if (message.type === 'peer-joined') {
+        await connectToPeer(message.peerId, message.codename, false);
+      }
+      if (message.type === 'offer') {
+        const connection = peerConnections.get(message.from)
+          || await connectToPeer(message.from, message.codename || '', false);
+        if (!connection) return;
+        await connection.setRemoteDescription(message.description);
+        await connection.setLocalDescription(await connection.createAnswer());
+        send({ type: 'answer', to: message.from, description: connection.localDescription });
+      }
+      if (message.type === 'answer') {
+        await peerConnections.get(message.from)?.setRemoteDescription(message.description);
+      }
+      if (message.type === 'candidate') await peerConnections.get(message.from)?.addIceCandidate(message.candidate);
+      if (message.type === 'peer-left') dropPeer(message.peerId);
+    } catch (error) {
+      console.warn('Video call signaling failed', error);
+    }
+  };
+
+  return {
+    close: () => {
+      closed = true;
+      socket?.close();
+      peerConnections.forEach((connection) => connection.close());
+      peerConnections.clear();
+    }
+  };
+}
+
 function openGroupCameraScreen(cameraCount) {
   const existingScreen = document.getElementById('group-camera-screen');
   if (existingScreen) existingScreen.remove();
+
+  const clampCameraCount = (value) => {
+    const wanted = Math.round(Number(value));
+    return Math.min(16, Math.max(1, Number.isFinite(wanted) && wanted > 0 ? wanted : 1));
+  };
+  let slotCount = clampCameraCount(cameraCount);
 
   const cameraScreen = document.createElement('div');
   cameraScreen.className = 'group-camera-screen';
@@ -2136,7 +2244,11 @@ function openGroupCameraScreen(cameraCount) {
         <p class="eyebrow">The Love Media</p>
         <h2>Group camera view</h2>
       </div>
-      <button class="secondary-btn" id="close-group-camera-btn">Exit</button>
+      <div class="group-camera-controls">
+        <label for="group-camera-slot-count">Cameras</label>
+        <input id="group-camera-slot-count" type="number" min="1" max="16" value="${slotCount}" />
+        <button class="secondary-btn" id="close-group-camera-btn">Exit</button>
+      </div>
     </div>
     <div class="group-camera-grid" id="group-camera-grid"></div>
     <p class="group-camera-screen-status" id="group-camera-screen-status" aria-live="polite"></p>
@@ -2144,106 +2256,90 @@ function openGroupCameraScreen(cameraCount) {
 
   document.getElementById('root').appendChild(cameraScreen);
   const cameraGrid = document.getElementById('group-camera-grid');
+  const countInput = document.getElementById('group-camera-slot-count');
+  const statusElement = () => document.getElementById('group-camera-screen-status');
   let cameraStream = null;
+  let connection = null;
 
   const localTile = document.createElement('div');
   localTile.className = 'group-camera-tile';
   localTile.innerHTML = `<video id="group-local-camera" autoplay muted playsinline></video><strong></strong>`;
   localTile.querySelector('strong').textContent = currentProfileName;
-  cameraGrid.appendChild(localTile);
 
-  const peerConnections = new Map();
   const peerTiles = new Map();
-  const peerId = crypto.randomUUID();
-  let signalingSocket = null;
 
-  const sendSignal = (message) => {
-    if (signalingSocket?.readyState === WebSocket.OPEN) signalingSocket.send(JSON.stringify(message));
+  const renderGrid = () => {
+    const peerTileList = [...peerTiles.values()];
+    const shown = Math.max(slotCount, peerTileList.length + 1);
+    const columns = shown <= 1 ? 1 : shown <= 4 ? 2 : shown <= 9 ? 3 : 4;
+    cameraGrid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+    cameraGrid.replaceChildren(localTile, ...peerTileList);
+
+    for (let index = peerTileList.length + 1; index < shown; index += 1) {
+      const emptyTile = document.createElement('div');
+      emptyTile.className = 'group-camera-tile group-camera-empty';
+      emptyTile.innerHTML = '<span>Open camera spot</span>';
+      cameraGrid.appendChild(emptyTile);
+    }
   };
 
-  const removePeer = (remotePeerId) => {
-    peerConnections.get(remotePeerId)?.close();
-    peerConnections.delete(remotePeerId);
-    peerTiles.get(remotePeerId)?.remove();
-    peerTiles.delete(remotePeerId);
+  const setCameraCount = (value) => {
+    slotCount = clampCameraCount(value);
+    countInput.value = String(slotCount);
+    renderGrid();
   };
 
-  const addRemotePeer = (remotePeerId, stream) => {
+  const addPeerTile = (remotePeerId, stream, codename) => {
     let tile = peerTiles.get(remotePeerId);
     if (!tile) {
       tile = document.createElement('div');
       tile.className = 'group-camera-tile';
       tile.innerHTML = '<video autoplay playsinline></video><strong></strong>';
-      tile.querySelector('strong').textContent = `Participant ${peerTiles.size + 1}`;
-      cameraGrid.appendChild(tile);
       peerTiles.set(remotePeerId, tile);
     }
+    tile.querySelector('strong').textContent = codename || `Participant ${peerTiles.size}`;
     tile.querySelector('video').srcObject = stream;
+    renderGrid();
   };
 
-  const connectToPeer = async (remotePeerId, stream, shouldOffer) => {
-    const connection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-    peerConnections.set(remotePeerId, connection);
-    stream.getTracks().forEach((track) => connection.addTrack(track, stream));
-    connection.onicecandidate = ({ candidate }) => {
-      if (candidate) sendSignal({ type: 'candidate', to: remotePeerId, candidate });
-    };
-    connection.ontrack = ({ streams }) => addRemotePeer(remotePeerId, streams[0]);
-    connection.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(connection.connectionState)) removePeer(remotePeerId);
-    };
-    if (shouldOffer) {
-      await connection.setLocalDescription(await connection.createOffer());
-      sendSignal({ type: 'offer', to: remotePeerId, description: connection.localDescription });
-    }
-    return connection;
+  const removePeerTile = (remotePeerId) => {
+    peerTiles.get(remotePeerId)?.remove();
+    peerTiles.delete(remotePeerId);
+    renderGrid();
   };
 
-  const startWebRtc = async (stream) => {
-    const signalingUrl = webSocketBaseUrl;
-    signalingSocket = new WebSocket(signalingUrl);
-    signalingSocket.onopen = () => {
-      sendSignal({ type: 'auth', sessionToken: currentSessionToken });
-      sendSignal({ type: 'join', room: 'all-around-mayhem', peerId });
-    };
-    signalingSocket.onerror = () => {
-      document.getElementById('group-camera-screen-status').textContent = 'Unable to connect to the video server.';
-    };
-    signalingSocket.onmessage = async ({ data }) => {
-      const message = JSON.parse(data);
-      if (message.type === 'existing-peer') await connectToPeer(message.peerId, stream, true);
-      if (message.type === 'offer') {
-        const connection = peerConnections.get(message.from) || await connectToPeer(message.from, stream, false);
-        await connection.setRemoteDescription(message.description);
-        await connection.setLocalDescription(await connection.createAnswer());
-        sendSignal({ type: 'answer', to: message.from, description: connection.localDescription });
-      }
-      if (message.type === 'answer') await peerConnections.get(message.from)?.setRemoteDescription(message.description);
-      if (message.type === 'candidate') await peerConnections.get(message.from)?.addIceCandidate(message.candidate);
-      if (message.type === 'peer-left') removePeer(message.peerId);
-    };
-  };
+  countInput.addEventListener('change', () => setCameraCount(countInput.value));
+  countInput.addEventListener('input', () => {
+    if (countInput.value) setCameraCount(countInput.value);
+  });
+
+  renderGrid();
 
   if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-    document.getElementById('group-camera-screen-status').textContent = 'Webcam access is not available.';
+    statusElement().textContent = 'Webcam access is not available.';
   } else {
     navigator.mediaDevices.getUserMedia({ video: true, audio: false })
       .then((stream) => {
         cameraStream = stream;
-        document.getElementById('group-local-camera').srcObject = stream;
-        startWebRtc(stream);
+        localTile.querySelector('video').srcObject = stream;
+        connection = createVideoRoomConnection({
+          room: 'all-around-mayhem',
+          stream,
+          onPeer: addPeerTile,
+          onPeerLeft: removePeerTile,
+          onStatus: (text) => {
+            statusElement().textContent = text;
+          }
+        });
       })
       .catch(() => {
-        document.getElementById('group-camera-screen-status').textContent = 'Camera permission was not granted.';
+        statusElement().textContent = 'Camera permission was not granted.';
       });
   }
 
   document.getElementById('close-group-camera-btn').addEventListener('click', () => {
     if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
-    signalingSocket?.close();
-    peerConnections.forEach((connection) => connection.close());
+    connection?.close();
     cameraScreen.remove();
   });
 }
@@ -2335,7 +2431,18 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     document.getElementById('reset-room-background-btn').remove();
   });
   const roomMatesList = document.getElementById('room-mates-list');
-  [currentProfileName].forEach((name) => {
+
+  // Everyone currently in this room, plus yourself, so the roommates panel can
+  // actually open a private message with the other people in the room.
+  const roomMateNames = () => {
+    const members = roomMembers[roomIdForName(roomName)] || [];
+    return [...new Set([currentProfileName, ...members].filter(Boolean))];
+  };
+
+  const renderRoomMates = () => {
+    if (!roomMatesList.isConnected) return;
+    roomMatesList.replaceChildren();
+    roomMateNames().forEach((name) => {
     const roomMateEntry = document.createElement('div');
     roomMateEntry.className = 'room-mate-entry';
 
@@ -2465,11 +2572,27 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
             <div class="private-message-thread" id="private-message-thread" aria-live="polite"></div>
           </div>
           <div class="private-camera-column">
+            ${options.groupChat ? `
+              <div class="group-camera-controls">
+                <label for="private-group-camera-count">Cameras</label>
+                <input id="private-group-camera-count" type="number" min="1" max="16" value="4" />
+              </div>
+            ` : ''}
             <button class="secondary-btn" id="private-camera-btn" type="button">Camera</button>
             <span class="private-camera-status" id="private-camera-status" aria-live="polite"></span>
             ${showCameraPreview ? `
               <div class="camera-preview hidden" id="private-camera-preview-wrap">
-                <video id="private-camera-preview" autoplay muted playsinline></video>
+                <div class="video-call-grid">
+                  <div class="video-call-tile">
+                    <video id="private-camera-preview" autoplay muted playsinline></video>
+                    <strong>You</strong>
+                  </div>
+                  <div class="video-call-tile waiting" id="private-remote-tile">
+                    <video id="private-remote-video" autoplay playsinline></video>
+                    <strong>${name}</strong>
+                    <span class="video-call-waiting">Waiting for ${name} to open their camera</span>
+                  </div>
+                </div>
               </div>
             ` : ''}
           </div>
@@ -2590,32 +2713,73 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       addPrivateMessage(sender, message, ownMessage);
     };
 
+    const remoteTile = document.getElementById('private-remote-tile');
+    const remoteVideo = document.getElementById('private-remote-video');
+    let callConnection = null;
+
+    const stopPrivateCall = () => {
+      callConnection?.close();
+      callConnection = null;
+      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+      cameraPreview.srcObject = null;
+      if (remoteVideo) remoteVideo.srcObject = null;
+      remoteTile?.classList.add('waiting');
+      cameraPreviewWrap?.classList.add('hidden');
+      cameraButton.textContent = 'Camera';
+      cameraStatus.textContent = '';
+    };
+
     cameraButton.addEventListener('click', async () => {
       if (!showCameraPreview) {
-        cameraStatus.textContent = 'Camera attached to this message.';
+        const cameraCountInput = document.getElementById('private-group-camera-count');
+        openGroupCameraScreen(Number(cameraCountInput?.value) || 4);
         return;
       }
       if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-        cameraStream = null;
-        cameraPreview.srcObject = null;
-        cameraPreviewWrap.classList.add('hidden');
-        cameraButton.textContent = 'Camera';
+        stopPrivateCall();
         return;
       }
 
-      if (!navigator.mediaDevices?.getUserMedia) {
+      if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
         cameraStatus.textContent = 'Webcam access is not available.';
         return;
       }
 
+      // Both sides of a private message join the same room, so the cameras meet
+      // in the middle instead of only showing a local preview.
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        cameraPreview.srcObject = cameraStream;
+        const callStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        cameraStream = callStream;
+        cameraPreview.srcObject = callStream;
         cameraPreviewWrap.classList.remove('hidden');
+        remoteTile?.classList.add('waiting');
         cameraButton.textContent = 'Turn off camera';
-        cameraStatus.textContent = '';
+        cameraStatus.textContent = `Waiting for ${name} to open their camera.`;
+
+        const callRoom = `dm:${[currentProfileName, name]
+          .map((codename) => codename.toLowerCase())
+          .sort()
+          .join('|')}`;
+        callConnection = createVideoRoomConnection({
+          room: callRoom,
+          stream: callStream,
+          onPeer: (peerId, peerStream) => {
+            remoteVideo.srcObject = peerStream;
+            remoteTile.classList.remove('waiting');
+            cameraStatus.textContent = '';
+          },
+          onPeerLeft: () => {
+            remoteVideo.srcObject = null;
+            remoteTile.classList.add('waiting');
+            cameraStatus.textContent = `Waiting for ${name} to open their camera.`;
+          },
+          onStatus: (text) => {
+            cameraStatus.textContent = text;
+          }
+        });
       } catch (error) {
+        cameraStream = null;
         cameraStatus.textContent = 'Camera permission was not granted.';
       }
     });
@@ -2646,6 +2810,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       sendPrivateMessage();
     });
     document.getElementById('close-private-message-btn').addEventListener('click', () => {
+      callConnection?.close();
       if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
       if (options.groupChat) {
         groupChatActive = false;
@@ -2678,7 +2843,11 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     });
     roomMateEntry.append(roomMate, roomMateMenu);
     roomMatesList.appendChild(roomMateEntry);
-  });
+    });
+  };
+
+  roomMatesRenderer = renderRoomMates;
+  renderRoomMates();
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.room-mate-trigger') && !e.target.closest('.profile-menu')) {
@@ -2695,6 +2864,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
   document.getElementById('exit-room-btn').addEventListener('click', () => {
     groupChatActive = false;
+    roomMatesRenderer = null;
     window.history.back();
   });
 

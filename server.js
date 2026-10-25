@@ -837,7 +837,10 @@ server.on('connection', (socket) => {
       authenticatedSession = getSessionByToken(String(message.sessionToken || ''));
       if (!authenticatedSession) {
         socket.close(1008, 'Authentication required.');
+        return;
       }
+      // Kept on the socket so rooms and presence can name this connection.
+      socket.authenticatedSession = authenticatedSession;
       return;
     }
 
@@ -857,14 +860,10 @@ server.on('connection', (socket) => {
       const presenceRoom = String(message.room || '').trim();
       
       if (presenceRoom) {
-        if (!rooms.has(presenceRoom)) rooms.set(presenceRoom, new Map());
-        
-        const room = rooms.get(presenceRoom);
-        if (!room.has(socket)) {
-            room.set(socket, { authenticatedSession: authenticatedSession });
-        }
-        
-        presenceRooms.get(presenceRoom)?.add(socket);
+        // Presence lives in its own map: the call rooms in `rooms` are keyed by
+        // peer id and hold sockets, so mixing the two breaks peer discovery.
+        if (!presenceRooms.has(presenceRoom)) presenceRooms.set(presenceRoom, new Set());
+        presenceRooms.get(presenceRoom).add(socket);
         socket.presenceRoomId = presenceRoom;
         broadcastPresenceCounts();
       }
@@ -883,19 +882,24 @@ server.on('connection', (socket) => {
       if (!rooms.has(roomId)) rooms.set(roomId, new Map());
 
       const room = rooms.get(roomId);
-      
-      // Notify existing peers that a new peer has joined
+      const codename = authenticatedSession.codename;
+      const existingPeers = [];
+
+      // Tell the peers who are already in the room about the newcomer.
       for (const [existingPeerId, existingSocket] of room) {
-        if (existingSocket !== socket) { // Avoid sending to self if logic is complex
-          existingSocket.send(JSON.stringify({ type: 'peer-joined', peerId }));
-        }
+        if (existingSocket === socket) continue;
+        existingPeers.push({
+          peerId: existingPeerId,
+          codename: existingSocket.authenticatedSession?.codename || ''
+        });
+        existingSocket.send(JSON.stringify({ type: 'peer-joined', peerId, codename }));
       }
-      
+
       // Register the new peer
       room.set(peerId, socket);
-      
-      // Notify the new peer about the existing members
-      socket.send(JSON.stringify({ type: 'existing-peer', peerId: peerId }));
+
+      // Tell the newcomer who was already here, so the calls can be offered.
+      socket.send(JSON.stringify({ type: 'existing-peer', peers: existingPeers }));
       return;
     }
 
