@@ -1755,6 +1755,17 @@ button, input {
   background-clip: content-box;
 }
 
+/* A second private message box floats beside the first without dimming the room
+   twice, and lets clicks reach the box it sits next to. */
+.profile-editor-modal.private-message-window-floating {
+  background: transparent;
+  pointer-events: none;
+}
+
+.profile-editor-modal.private-message-window-floating .private-message-card {
+  pointer-events: auto;
+}
+
 .private-message-drag-handle {
   display: flex;
   align-items: center;
@@ -1823,7 +1834,7 @@ button, input {
   text-align: center;
 }
 
-#private-message-input {
+.private-message-input {
   min-height: 42px;
   height: 42px;
   resize: none;

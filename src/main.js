@@ -37,6 +37,8 @@ let currentConnectionStatus = '';
 let friends = JSON.parse(localStorage.getItem('the-love-media-friends') || '[]');
 let privateMessageOpener = null;
 let pendingPrivateMessageFriend = null;
+let privateMessageWindows = [];
+let privateMessageWindowSeq = 0;
 let groupChatActive = false;
 let groupChatInvites = [];
 let roomCounts = {};
@@ -322,6 +324,62 @@ async function migrateLocalAccounts() {
   }
   localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
 }
+
+// Phones only get one private message box at a time; computers and tablets get two.
+function privateMessageWindowLimit() {
+  const shortSide = Math.min(window.innerWidth, window.innerHeight);
+  return shortSide < 600 ? 1 : 2;
+}
+
+// Open boxes share the screen side by side so both conversations stay readable.
+function tilePrivateMessageWindows() {
+  privateMessageWindows = privateMessageWindows.filter((entry) => entry.element.isConnected);
+  if (!privateMessageWindows.length) return;
+  const margin = 12;
+  const place = (card, left, width) => {
+    card.style.width = `${width}px`;
+    const height = card.getBoundingClientRect().height;
+    card.style.left = `${left}px`;
+    card.style.top = `${Math.max(margin, (window.innerHeight - height) / 2)}px`;
+  };
+  if (privateMessageWindows.length === 1) {
+    const card = privateMessageWindows[0].element.querySelector('.private-message-card');
+    const width = Math.min(700, window.innerWidth - margin * 2);
+    place(card, (window.innerWidth - width) / 2, width);
+    return;
+  }
+  const width = Math.max(240, Math.min(700, (window.innerWidth - margin * 3) / 2));
+  privateMessageWindows.forEach((entry, index) => {
+    place(entry.element.querySelector('.private-message-card'), margin + index * (width + margin), width);
+  });
+}
+
+// Only the oldest box dims the room; a second one lets clicks through so the box
+// underneath it can still be used.
+function applyPrivateMessageStack() {
+  privateMessageWindows.forEach((entry, index) => {
+    entry.element.classList.toggle('private-message-window-floating', index > 0);
+  });
+}
+
+// Re-tile only when a box no longer fits, so turning a tablet or a phone does not
+// leave a conversation hanging off the screen.
+function fitPrivateMessageWindows() {
+  if (!privateMessageWindows.length) return;
+  const margin = 12;
+  const clipped = privateMessageWindows.some((entry) => {
+    const rect = entry.element.querySelector('.private-message-card').getBoundingClientRect();
+    return rect.left < margin - 0.5 || rect.right > window.innerWidth - margin + 0.5 || rect.width > window.innerWidth - margin * 2 + 0.5;
+  });
+  if (clipped) tilePrivateMessageWindows();
+}
+
+window.addEventListener('resize', () => {
+  while (privateMessageWindows.length > privateMessageWindowLimit()) {
+    privateMessageWindows[0].close();
+  }
+  fitPrivateMessageWindows();
+});
 
 function setupEmojiPicker(buttonId, pickerId, inputId) {
   const button = document.getElementById(buttonId);
@@ -2552,12 +2610,23 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
   function openPrivateMessage(name, options = {}) {
     const showCameraPreview = !options.groupChat;
-    const existingMessage = document.getElementById('private-message-modal');
-    if (existingMessage) existingMessage.remove();
+    const isGroupChat = Boolean(options.groupChat);
+    const windowKey = `pm${++privateMessageWindowSeq}`;
+
+    // Asking for the same conversation again leaves its open box where it is.
+    if (privateMessageWindows.some((entry) => entry.name === name && entry.isGroupChat === isGroupChat)) {
+      return;
+    }
+
+    // Opening one past the limit closes the oldest box instead of piling them up.
+    const privateMessageLimit = privateMessageWindowLimit();
+    while (privateMessageWindows.length >= privateMessageLimit) {
+      privateMessageWindows[0].close();
+    }
 
     const messageModal = document.createElement('div');
-    messageModal.className = `profile-editor-modal${options.groupChat ? ' group-chat-message-modal' : ''}`;
-    messageModal.id = 'private-message-modal';
+    messageModal.className = `profile-editor-modal private-message-window${options.groupChat ? ' group-chat-message-modal' : ''}`;
+    messageModal.id = windowKey;
     messageModal.innerHTML = `
       <div class="profile-editor-card private-message-card">
         <div class="private-message-drag-handle" title="Drag to move message box">
@@ -2597,7 +2666,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
         </div>
         <div class="private-message-compose">
           <label for="private-message-input">Message</label>
-          <textarea id="private-message-input" rows="1" placeholder="Write a private message"></textarea>
+          <textarea class="private-message-input" id="private-message-input" rows="1" placeholder="Write a private message"></textarea>
         </div>
         <div class="emoji-message-controls">
           <button class="secondary-btn emoji-picker-button" id="private-emoji-btn" type="button" aria-label="Add emoji">😊</button>
@@ -2621,15 +2690,24 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       </div>
     `;
 
+    // Each box gets its own ids, so two conversations can be open side by side.
+    messageModal.querySelectorAll('[id]').forEach((element) => {
+      element.id = `${windowKey}-${element.id}`;
+    });
+    messageModal.querySelectorAll('[for]').forEach((element) => {
+      element.htmlFor = `${windowKey}-${element.htmlFor}`;
+    });
+    const byId = (id) => document.getElementById(`${windowKey}-${id}`);
+
     document.getElementById('root').appendChild(messageModal);
     const messageCard = messageModal.querySelector('.private-message-card');
     const dragHandle = messageModal.querySelector('.private-message-drag-handle');
     const resizeHandle = messageModal.querySelector('.private-message-resize-handle');
-    const initialRect = messageCard.getBoundingClientRect();
     messageCard.style.position = 'fixed';
-    messageCard.style.left = `${initialRect.left}px`;
-    messageCard.style.top = `${initialRect.top}px`;
-    messageCard.style.width = `${initialRect.width}px`;
+    const windowEntry = { name, isGroupChat, element: messageModal, close: closeWindow };
+    privateMessageWindows.push(windowEntry);
+    tilePrivateMessageWindows();
+    applyPrivateMessageStack();
     let dragState = null;
     let resizeState = null;
 
@@ -2675,13 +2753,17 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     resizeHandle.addEventListener('pointerup', () => { resizeState = null; });
     resizeHandle.addEventListener('pointercancel', () => { resizeState = null; });
     window.addEventListener('resize', clampCardPosition, { once: true });
-    setupEmojiPicker('private-emoji-btn', 'private-emoji-picker', 'private-message-input');
+    setupEmojiPicker(
+      `${windowKey}-private-emoji-btn`,
+      `${windowKey}-private-emoji-picker`,
+      `${windowKey}-private-message-input`
+    );
     let cameraStream = null;
-    const cameraButton = document.getElementById('private-camera-btn');
-    const cameraPreviewWrap = document.getElementById('private-camera-preview-wrap');
-    const cameraPreview = document.getElementById('private-camera-preview');
-    const cameraStatus = document.getElementById('private-camera-status');
-    const messageThread = document.getElementById('private-message-thread');
+    const cameraButton = byId('private-camera-btn');
+    const cameraPreviewWrap = byId('private-camera-preview-wrap');
+    const cameraPreview = byId('private-camera-preview');
+    const cameraStatus = byId('private-camera-status');
+    const messageThread = byId('private-message-thread');
     const isFriendOnline = new Set([currentProfileName]).has(name);
     const threadMessages = getPrivateThread(name);
 
@@ -2711,8 +2793,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       addPrivateMessage(sender, message, ownMessage);
     };
 
-    const remoteTile = document.getElementById('private-remote-tile');
-    const remoteVideo = document.getElementById('private-remote-video');
+    const remoteTile = byId('private-remote-tile');
+    const remoteVideo = byId('private-remote-video');
     let callConnection = null;
 
     const stopPrivateCall = () => {
@@ -2730,7 +2812,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
 
     cameraButton.addEventListener('click', async () => {
       if (!showCameraPreview) {
-        const cameraCountInput = document.getElementById('private-group-camera-count');
+        const cameraCountInput = byId('private-group-camera-count');
         openGroupCameraScreen(Number(cameraCountInput?.value) || 4);
         return;
       }
@@ -2783,8 +2865,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     });
 
     const sendPrivateMessage = () => {
-      const input = document.getElementById('private-message-input');
-      const status = document.getElementById('private-message-status');
+      const input = byId('private-message-input');
+      const status = byId('private-message-status');
       const message = input.value.trim();
       if (!message) return;
       appendThreadMessage(currentProfileName, message, true);
@@ -2801,21 +2883,25 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       }, 600);
     };
 
-    document.getElementById('send-private-message-btn').addEventListener('click', sendPrivateMessage);
-    document.getElementById('private-message-input').addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' || event.shiftKey) return;
-      event.preventDefault();
-      sendPrivateMessage();
-    });
-    document.getElementById('close-private-message-btn').addEventListener('click', () => {
-      callConnection?.close();
-      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
-      if (options.groupChat) {
+    function closeWindow() {
+      if (showCameraPreview) stopPrivateCall();
+      if (isGroupChat) {
         groupChatActive = false;
         updateGroupChatStatus();
       }
       messageModal.remove();
+      privateMessageWindows = privateMessageWindows.filter((entry) => entry.element !== messageModal);
+      tilePrivateMessageWindows();
+      applyPrivateMessageStack();
+    }
+
+    byId('send-private-message-btn').addEventListener('click', sendPrivateMessage);
+    byId('private-message-input').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      sendPrivateMessage();
     });
+    byId('close-private-message-btn').addEventListener('click', closeWindow);
   }
 
   privateMessageOpener = openPrivateMessage;
