@@ -1894,7 +1894,14 @@ function openPrivateMail() {
     emptyMessage.textContent = 'Your private mailbox is empty.';
     mailList.appendChild(emptyMessage);
   }
-  document.getElementById('close-pm-mail-btn').addEventListener('click', () => mailModal.remove());
+  document.getElementById('close-pm-mail-btn').addEventListener('click', () => {
+    mailModal.remove();
+    // PM Mail is opened from Friends Connect, so closing it lands back on that
+    // list instead of dropping the person all the way out to the room.
+    if (window.location.hash === '#friends-connect' && !document.querySelector('#friends-connect-modal')) {
+      openFriendsConnect();
+    }
+  });
 }
 
 function openPrivateMailMessage(friend, message, mailModal) {
@@ -1981,7 +1988,7 @@ function openFriendsConnect() {
         event.stopPropagation();
         overlay.remove();
         if (privateMessageOpener) {
-          privateMessageOpener(friend);
+          privateMessageOpener(friend, { fromFriendsConnect: true });
         } else {
           pendingPrivateMessageFriend = friend;
           renderAllAroundMayhemRoom();
@@ -2022,7 +2029,7 @@ function openFriendsConnect() {
       const openMessage = () => {
         overlay.remove();
         if (privateMessageOpener) {
-          privateMessageOpener(friend);
+          privateMessageOpener(friend, { fromFriendsConnect: true });
         } else {
           pendingPrivateMessageFriend = friend;
           renderAllAroundMayhemRoom();
@@ -2883,7 +2890,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       }, 600);
     };
 
-    function closeWindow() {
+    function closeWindow(closeOptions = {}) {
       if (showCameraPreview) stopPrivateCall();
       if (isGroupChat) {
         groupChatActive = false;
@@ -2893,6 +2900,13 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       privateMessageWindows = privateMessageWindows.filter((entry) => entry.element !== messageModal);
       tilePrivateMessageWindows();
       applyPrivateMessageStack();
+      // A conversation started from Friends Connect reopens that list on Exit,
+      // so leaving a chat is one step back instead of two.
+      if (closeOptions.restoreFriendsConnect
+        && window.location.hash === '#friends-connect'
+        && !document.querySelector('#friends-connect-modal')) {
+        openFriendsConnect();
+      }
     }
 
     byId('send-private-message-btn').addEventListener('click', sendPrivateMessage);
@@ -2901,7 +2915,9 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       event.preventDefault();
       sendPrivateMessage();
     });
-    byId('close-private-message-btn').addEventListener('click', closeWindow);
+    byId('close-private-message-btn').addEventListener('click', () => {
+      closeWindow({ restoreFriendsConnect: Boolean(options.fromFriendsConnect) });
+    });
   }
 
   privateMessageOpener = openPrivateMessage;
