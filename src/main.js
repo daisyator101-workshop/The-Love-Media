@@ -729,7 +729,154 @@ function saveGayjesusBlogVideos(videos) {
   localStorage.setItem('the-love-media-gayjesus-blog-videos', JSON.stringify(videos));
 }
 
+/**
+ * Recorded clips are kept in IndexedDB, not localStorage.
+ * A clip is several megabytes once encoded, and localStorage stops accepting
+ * writes at roughly 5-10 MB for the whole site, so saving failed and the
+ * recorder sat on "Saving your video..." forever. IndexedDB stores the clip as
+ * a Blob with a far larger quota and without the base64 overhead.
+ * Only the small metadata (title, topic, comments) stays in localStorage.
+ */
+const videoBlobDbName = 'the-love-media-videos';
+const videoBlobStoreName = 'clips';
+const videoObjectUrls = new Map();
+let videoBlobDbPromise = null;
+
+function openVideoBlobDb() {
+  if (!window.indexedDB) {
+    return Promise.reject(new Error('This browser cannot store videos.'));
+  }
+  if (!videoBlobDbPromise) {
+    videoBlobDbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(videoBlobDbName, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(videoBlobStoreName)) db.createObjectStore(videoBlobStoreName);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open video storage.'));
+      request.onblocked = () => reject(new Error('Video storage is busy in another tab.'));
+    });
+    videoBlobDbPromise.catch(() => {
+      videoBlobDbPromise = null;
+    });
+  }
+  return videoBlobDbPromise;
+}
+
+function runVideoBlobTransaction(mode, run) {
+  return openVideoBlobDb().then((db) => new Promise((resolve, reject) => {
+    const transaction = db.transaction(videoBlobStoreName, mode);
+    let request;
+    try {
+      request = run(transaction.objectStore(videoBlobStoreName));
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve(request ? request.result : undefined);
+    transaction.onerror = () => reject(transaction.error || request?.error || new Error('Video storage failed.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Saving the video was interrupted.'));
+  }));
+}
+
+function saveVideoBlob(id, blob) {
+  return runVideoBlobTransaction('readwrite', (store) => store.put(blob, id));
+}
+
+function readVideoBlob(id) {
+  return runVideoBlobTransaction('readonly', (store) => store.get(id));
+}
+
+async function deleteVideoBlob(id) {
+  try {
+    await runVideoBlobTransaction('readwrite', (store) => store.delete(id));
+  } catch {
+    // A missing clip must never block removing it from the list.
+  }
+  const objectUrl = videoObjectUrls.get(id);
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    videoObjectUrls.delete(id);
+  }
+}
+
+function videoObjectUrl(video) {
+  if (!video?.id) return '';
+  return videoObjectUrls.get(video.id) || '';
+}
+
+async function storeRecordedVideo(blob, video) {
+  await saveVideoBlob(video.id, blob);
+  videoObjectUrls.set(video.id, URL.createObjectURL(blob));
+}
+
+function hydrateVideoObjectUrls(videos, onReady) {
+  const missing = videos.filter((video) => video.storage === 'indexeddb' && video.id && !videoObjectUrls.has(video.id));
+  if (!missing.length) return Promise.resolve(false);
+  return Promise.all(missing.map(async (video) => {
+    try {
+      const blob = await readVideoBlob(video.id);
+      if (blob) videoObjectUrls.set(video.id, URL.createObjectURL(blob));
+      else video.unavailable = true;
+    } catch {
+      // Keep the placeholder; the next render retries.
+    }
+  })).then(() => {
+    if (typeof onReady === 'function') onReady();
+    return true;
+  });
+}
+
+/** Moves clips saved as localStorage data URLs into IndexedDB. */
+async function migrateStoredVideoClips() {
+  const stores = [
+    { read: getWelcomeVideos, write: saveWelcomeVideos },
+    { read: getGayjesusBlogVideos, write: saveGayjesusBlogVideos }
+  ];
+  for (const store of stores) {
+    let videos;
+    try {
+      videos = store.read();
+    } catch {
+      continue;
+    }
+    let changed = false;
+    for (const video of videos) {
+      if (video.storage === 'indexeddb' || !video.url?.startsWith('data:video/')) continue;
+      try {
+        const blob = await (await fetch(video.url)).blob();
+        if (!blob.size) continue;
+        if (!video.id) video.id = crypto.randomUUID();
+        await saveVideoBlob(video.id, blob);
+        video.storage = 'indexeddb';
+        video.mimeType = blob.type || 'video/webm';
+        delete video.url;
+        changed = true;
+      } catch {
+        // Leave the legacy entry rendering from its data URL.
+      }
+    }
+    if (changed) {
+      try {
+        store.write(videos);
+      } catch {
+        // Metadata is small; if even this fails there is nothing better to do.
+      }
+    }
+  }
+}
+
 function renderVideoSource(video) {
+  if (video.storage === 'indexeddb') {
+    const objectUrl = videoObjectUrl(video);
+    if (objectUrl) {
+      return `<video class="saved-video-preview" controls preload="metadata" src="${objectUrl}"></video>`;
+    }
+    return video.unavailable
+      ? '<p class="private-message-status">This video is no longer stored on this device.</p>'
+      : '<p class="private-message-status">Loading video...</p>';
+  }
   return video.url?.startsWith('data:video/')
     ? `<video class="saved-video-preview" controls preload="metadata" src="${video.url}"></video>`
     : `<a href="${video.url}" target="_blank" rel="noreferrer">Open video</a>`;
@@ -758,10 +905,11 @@ function bindVideoInteractions({ list, videos, saveVideos, renderList, canDelete
   list.querySelectorAll('[data-video-delete]').forEach((button) => {
     button.addEventListener('click', () => {
       if (!window.confirm('Delete this video and its comments?')) return;
-      const nextVideos = videos.filter((video) => video.id !== button.dataset.videoDelete);
+      const videoId = button.dataset.videoDelete;
+      const nextVideos = videos.filter((video) => video.id !== videoId);
       saveVideos(nextVideos);
-      list.innerHTML = renderList(nextVideos);
-      bindVideoInteractions({ list, videos: nextVideos, saveVideos, renderList, canDelete });
+      deleteVideoBlob(videoId);
+      renderVideoList({ list, videos: nextVideos, saveVideos, renderList, canDelete });
     });
   });
 
@@ -780,9 +928,20 @@ function bindVideoInteractions({ list, videos, saveVideos, renderList, canDelete
         createdAt: Date.now()
       }];
       saveVideos(videos);
-      list.innerHTML = renderList(videos);
-      bindVideoInteractions({ list, videos, saveVideos, renderList, canDelete });
+      renderVideoList({ list, videos, saveVideos, renderList, canDelete });
     });
+  });
+}
+
+/** Draws a video list and swaps in clips still loading from IndexedDB. */
+function renderVideoList({ list, videos, saveVideos, renderList, canDelete }) {
+  const draw = () => {
+    list.innerHTML = renderList(videos);
+    bindVideoInteractions({ list, videos, saveVideos, renderList, canDelete });
+  };
+  draw();
+  hydrateVideoObjectUrls(videos, () => {
+    if (list.isConnected) draw();
   });
 }
 
@@ -881,19 +1040,23 @@ function startVideoRecorder({ titleInput, topicInput, status, onSave }) {
       recorder.addEventListener('dataavailable', (e) => {
         if (e.data && e.data.size) chunks.push(e.data);
       });
-      recorder.addEventListener('stop', () => {
+      recorder.addEventListener('stop', async () => {
         const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
-        const reader = new FileReader();
-        reader.addEventListener('load', () => {
-          onSave({
-            id: crypto.randomUUID(),
-            title: titleInput.value.trim() || (topicInput?.value.trim() ? 'Topic update' : 'Welcome update'),
-            topic: topicInput?.value.trim() || undefined,
-            url: reader.result
-          });
+        if (!blob.size) {
+          recorderStatus.textContent = 'Nothing was recorded. Record for a few seconds, then stop.';
+          startButton.disabled = false;
+          return;
+        }
+        recorderStatus.textContent = 'Saving your video...';
+        try {
+          await onSave(blob);
           closeRecorder();
-        });
-        reader.readAsDataURL(blob);
+        } catch (error) {
+          const outOfSpace = error && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+          recorderStatus.textContent = outOfSpace
+            ? 'Your browser is out of storage space. Delete an old video, then record this one again.'
+            : `The video could not be saved: ${error?.message || error}`;
+        }
       }, { once: true });
       recorder.start();
       startButton.disabled = true;
@@ -1102,7 +1265,7 @@ function openWelcomeVideosModal() {
 document.body.appendChild(modal);
 
 const welcomeVideosList = document.getElementById('welcome-videos-list');
-bindVideoInteractions({
+renderVideoList({
   list: welcomeVideosList,
   videos,
   saveVideos: saveWelcomeVideos,
@@ -1117,11 +1280,24 @@ if (isGayjesus) {
     startVideoRecorder({
       titleInput,
       status,
-      onSave: (video) => {
-        const nextVideos = [video, ...getWelcomeVideos()];
-        saveWelcomeVideos(nextVideos);
-        welcomeVideosList.innerHTML = renderWelcomeVideoList(nextVideos, isGayjesus);
-        bindVideoInteractions({
+      onSave: async (blob) => {
+        const video = {
+          id: crypto.randomUUID(),
+          title: titleInput.value.trim() || 'Welcome update',
+          storage: 'indexeddb',
+          mimeType: blob.type || 'video/webm',
+          createdAt: Date.now()
+        };
+        await storeRecordedVideo(blob, video);
+        let nextVideos;
+        try {
+          nextVideos = [video, ...getWelcomeVideos()];
+          saveWelcomeVideos(nextVideos);
+        } catch (error) {
+          await deleteVideoBlob(video.id);
+          throw error;
+        }
+        renderVideoList({
           list: welcomeVideosList,
           videos: nextVideos,
           saveVideos: saveWelcomeVideos,
@@ -1207,7 +1383,7 @@ function openGayjesusBlogModal() {
 document.body.appendChild(modal);
 
 const blogVideosList = document.getElementById('gayjesus-blog-list');
-bindVideoInteractions({
+renderVideoList({
   list: blogVideosList,
   videos,
   saveVideos: saveGayjesusBlogVideos,
@@ -1224,11 +1400,25 @@ if (isGayjesus) {
       titleInput,
       topicInput: customTopicInput,
       status,
-      onSave: (video) => {
-        const nextVideos = [video, ...getGayjesusBlogVideos()];
-        saveGayjesusBlogVideos(nextVideos);
-        blogVideosList.innerHTML = renderBlogTopicList(nextVideos, isGayjesus);
-        bindVideoInteractions({
+      onSave: async (blob) => {
+        const video = {
+          id: crypto.randomUUID(),
+          title: titleInput.value.trim() || (customTopicInput.value.trim() ? 'Topic update' : 'Welcome update'),
+          topic: customTopicInput.value.trim() || undefined,
+          storage: 'indexeddb',
+          mimeType: blob.type || 'video/webm',
+          createdAt: Date.now()
+        };
+        await storeRecordedVideo(blob, video);
+        let nextVideos;
+        try {
+          nextVideos = [video, ...getGayjesusBlogVideos()];
+          saveGayjesusBlogVideos(nextVideos);
+        } catch (error) {
+          await deleteVideoBlob(video.id);
+          throw error;
+        }
+        renderVideoList({
           list: blogVideosList,
           videos: nextVideos,
           saveVideos: saveGayjesusBlogVideos,
@@ -2774,6 +2964,7 @@ function renderInitialRoute() {
 }
 
 migrateLocalAccounts();
+migrateStoredVideoClips();
 renderInitialRoute();
 
 const handleAuthHistoryBack = (event) => {
