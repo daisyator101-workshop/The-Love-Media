@@ -1723,7 +1723,36 @@ button, input {
   width: min(100%, 700px);
   position: relative;
   height: auto;
-  overflow: visible;
+  /* The card scrolls inside the screen instead of running off the bottom, so
+     the exit and send buttons are always reachable with the vertical slider. */
+  max-height: calc(100vh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.55) rgba(255, 255, 255, 0.12);
+}
+
+.private-message-card::-webkit-scrollbar {
+  width: 14px;
+}
+
+.private-message-card::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.private-message-card::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  background-clip: content-box;
+}
+
+.private-message-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.78);
+  background-clip: content-box;
 }
 
 .private-message-drag-handle {

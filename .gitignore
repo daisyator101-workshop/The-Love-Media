@@ -2,6 +2,7 @@ node_modules/
 dist/
 accounts.json
 video-uploads/
+.test-server/
 .env
 .env.*
 .vscode/.env.txt

@@ -1,3 +1,0 @@
-◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
-[the-love-media] DATABASE_URL is not set - accounts are stored in accounts.json and will be lost on redeploy.
-WebRTC signaling & API server listening on http://0.0.0.0:3010
