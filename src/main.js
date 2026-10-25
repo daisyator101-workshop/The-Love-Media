@@ -760,10 +760,30 @@ function renderVideoSource(video) {
   return `<video class="saved-video-preview" controls preload="metadata" playsinline src="${videoFileUrl(video)}"></video>`;
 }
 
+async function downloadVideo(video) {
+  const response = await fetch(videoFileUrl(video));
+  if (!response.ok) throw new Error('That video could not be downloaded.');
+  const blob = await response.blob();
+  const extension = String(blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+  const name = String(video.title || 'video')
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'video';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${name}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 function renderVideoComments(video, canDelete = false) {
   const comments = getVideoComments()[video.id] || [];
   return `
     <div class="video-actions">
+      <button class="secondary-btn small-btn" data-video-download="${video.id}" type="button" title="Save the clip, then upload it to Facebook, Instagram or TikTok">Download</button>
       ${canDelete ? `<button class="danger-btn small-btn" data-video-delete="${video.id}" type="button">Delete video</button>` : ''}
     </div>
     <div class="video-comments">
@@ -780,6 +800,21 @@ function renderVideoComments(video, canDelete = false) {
 }
 
 function bindVideoInteractions(list, kind, videos, canDelete) {
+  list.querySelectorAll('[data-video-download]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const video = videos.find((item) => item.id === button.dataset.videoDownload);
+      if (!video) return;
+      button.disabled = true;
+      try {
+        await downloadVideo(video);
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
   list.querySelectorAll('[data-video-delete]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!window.confirm('Delete this video?')) return;
@@ -922,12 +957,13 @@ function startVideoRecorder({ titleInput, topicInput, status, onSave }) {
                      navigator.getUserMedia?.bind(navigator))(constraints);
       preview.srcObject = stream;
       chunks = [];
-      recorder = new MediaRecorder(stream);
+      const mimeType = pickRecorderMimeType({ hasAudio: stream.getAudioTracks().length > 0 });
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorder.addEventListener('dataavailable', (e) => {
         if (e.data && e.data.size) chunks.push(e.data);
       });
       recorder.addEventListener('stop', async () => {
-        const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+        const blob = new Blob(chunks, { type: String(recorder.mimeType || 'video/webm').split(';')[0] });
         if (!blob.size) {
           recorderStatus.textContent = 'Nothing was recorded. Record for a few seconds, then stop.';
           startButton.disabled = false;
@@ -1005,12 +1041,15 @@ function renderBlogTopicList(videos, canDelete = false) {
   }).join('');
 }
 
-function pickRecorderMimeType() {
+// MP4 (H.264 + AAC) is the format Facebook, Instagram and the other social
+// sites accept, so it is tried first; browsers without it fall back to WebM.
+function pickRecorderMimeType({ hasAudio = true } = {}) {
   const options = [
+    hasAudio ? 'video/mp4;codecs=avc1.42E01E,mp4a.40.2' : 'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
-    'video/webm',
-    'video/mp4'
+    'video/webm'
   ];
   return options.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || '';
 }
@@ -1047,8 +1086,14 @@ function mixAudioTracks(tracks) {
 
 function createScreenComposite(screenStream, webcamStream) {
   const canvas = document.createElement('canvas');
-  canvas.width = 1280;
-  canvas.height = 720;
+  // Match the shape of whatever is being shared, so a window or a tall screen
+  // is never squeezed into a fixed 16:9 frame with bars or a cropped page.
+  const settings = screenStream.getVideoTracks()[0]?.getSettings?.() || {};
+  const sourceWidth = Number(settings.width) || 1280;
+  const sourceHeight = Number(settings.height) || 720;
+  const fit = Math.min(1, 1920 / sourceWidth, 1080 / sourceHeight);
+  canvas.width = Math.max(2, Math.round((sourceWidth * fit) / 2) * 2);
+  canvas.height = Math.max(2, Math.round((sourceHeight * fit) / 2) * 2);
 
   const context = canvas.getContext('2d');
   const screenVideo = document.createElement('video');
@@ -1066,7 +1111,19 @@ function createScreenComposite(screenStream, webcamStream) {
     webcamVideo.play().catch(() => {});
   }
 
+  // Some capture sources only report their size once the frames arrive, so the
+  // canvas is re-shaped to the real source before recording starts.
+  const matchSourceShape = () => {
+    if (!screenVideo.videoWidth || !screenVideo.videoHeight) return;
+    const target = screenVideo.videoWidth / screenVideo.videoHeight;
+    if (Math.abs(canvas.width / canvas.height - target) < 0.01) return;
+    const fit = Math.min(1, 1920 / screenVideo.videoWidth, 1080 / screenVideo.videoHeight);
+    canvas.width = Math.max(2, Math.round((screenVideo.videoWidth * fit) / 2) * 2);
+    canvas.height = Math.max(2, Math.round((screenVideo.videoHeight * fit) / 2) * 2);
+  };
+
   const draw = () => {
+    matchSourceShape();
     context.fillStyle = '#000';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1234,7 +1291,6 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
     };
 
     startButton.addEventListener('click', () => {
-      const mimeType = pickRecorderMimeType();
       mixer?.stop();
       mixer = mixAudioTracks([
         ...screenStream.getAudioTracks(),
@@ -1246,6 +1302,9 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
         : screenStream.getVideoTracks();
       const recorderTracks = [...tracks];
       if (mixer.track) recorderTracks.push(mixer.track);
+      const mimeType = pickRecorderMimeType({
+        hasAudio: recorderTracks.some((track) => track.kind === 'audio')
+      });
 
       chunks = [];
       try {

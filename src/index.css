@@ -831,8 +831,7 @@ button, input {
   width: min(100%, 560px);
 }
 
-.video-recorder-preview,
-.saved-video-preview {
+.video-recorder-preview {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -842,9 +841,15 @@ button, input {
   object-fit: cover;
 }
 
+/* Saved clips are shown whole: a screen recording must never be cropped. */
 .saved-video-preview {
-  max-height: 240px;
+  display: block;
+  width: 100%;
+  max-height: 320px;
   margin: 0;
+  border-radius: 14px;
+  background: #101522;
+  object-fit: contain;
 }
 
 .screen-recorder-preview {
@@ -868,6 +873,7 @@ button, input {
 
 .video-actions {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: 10px;
 }
