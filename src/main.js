@@ -1221,10 +1221,9 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
         <h3>${hasWebcam ? 'Record screen & webcam' : 'Record screen'}</h3>
         <div class="screen-recorder-preview" id="screen-recorder-preview"></div>
         <p class="private-message-status" id="screen-recorder-status" aria-live="polite">
-          ${hasWebcam ? 'Screen and webcam are ready.' : 'Screen is ready.'} Press Start recording.
+          Starting the recording...
         </p>
         <div class="profile-editor-actions">
-          <button class="primary-btn" id="start-screen-recording-btn" type="button">Start recording</button>
           <button class="danger-btn" id="stop-screen-recording-btn" type="button" disabled>Stop &amp; save</button>
           <button class="secondary-btn" id="cancel-screen-recording-btn" type="button">Cancel</button>
         </div>
@@ -1234,7 +1233,6 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
 
     const preview = document.getElementById('screen-recorder-preview');
     const status = document.getElementById('screen-recorder-status');
-    const startButton = document.getElementById('start-screen-recording-btn');
     const stopButton = document.getElementById('stop-screen-recording-btn');
     const cancelButton = document.getElementById('cancel-screen-recording-btn');
 
@@ -1270,14 +1268,12 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
 
     const finish = async (blob) => {
       if (!blob.size) {
-        status.textContent = 'Nothing was recorded. Record for a few seconds, then stop.';
-        startButton.disabled = false;
+        status.textContent = 'Nothing was recorded. Open the recorder again and share for a few seconds.';
         stopButton.disabled = true;
         return;
       }
       if (blob.size > 40 * 1024 * 1024) {
         status.textContent = 'That recording is larger than 40 MB. Record a shorter clip.';
-        startButton.disabled = false;
         stopButton.disabled = true;
         return;
       }
@@ -1287,12 +1283,21 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
         cleanup();
       } catch (error) {
         status.textContent = `The recording could not be saved: ${error?.message || error}`;
-        startButton.disabled = false;
         stopButton.disabled = true;
       }
     };
 
-    startButton.addEventListener('click', () => {
+    const stopRecording = () => {
+      if (recorder?.state !== 'recording') return;
+      window.clearInterval(shareWatchId);
+      recorder.stop();
+      stopButton.disabled = true;
+      status.textContent = 'Saving your recording...';
+    };
+
+    // Recording starts as soon as the picker closes, so the only button left to
+    // reach is Chrome's own "Stop sharing" on the page being recorded.
+    const startRecording = () => {
       mixer?.stop();
       mixer = mixAudioTracks([
         ...screenStream.getAudioTracks(),
@@ -1330,9 +1335,8 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
       }, { once: true });
 
       recorder.start();
-      startButton.disabled = true;
       stopButton.disabled = false;
-      status.textContent = 'Recording now. Switch to the window you are showing, then press Stop & save.';
+      status.textContent = 'Recording now. Press Stop sharing on the page you are recording when you are done, or Stop & save here.';
 
       // Chrome's own "Stop sharing" button ends the track without always firing
       // an ended event, so the track state is watched as well.
@@ -1340,14 +1344,6 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
       shareWatchId = window.setInterval(() => {
         if (screenStream.getVideoTracks()[0]?.readyState === 'ended') stopRecording();
       }, 1000);
-    });
-
-    const stopRecording = () => {
-      if (recorder?.state !== 'recording') return;
-      window.clearInterval(shareWatchId);
-      recorder.stop();
-      stopButton.disabled = true;
-      status.textContent = 'Saving your recording...';
     };
 
     stopButton.addEventListener('click', stopRecording);
@@ -1359,6 +1355,8 @@ function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, o
       if (recorder?.state === 'recording') recorder.stop();
       cleanup();
     });
+
+    startRecording();
   })();
 }
 
