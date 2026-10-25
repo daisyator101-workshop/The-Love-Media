@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { createServer } from 'node:http';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import Stripe from 'stripe';
@@ -298,6 +298,188 @@ async function readRawBody(request) {
   return body;
 }
 
+// --- Shared videos (welcome/updates and blog clips) ---
+
+const videoAdminCodename = 'gayjesus';
+const videoMaxBytes = 40 * 1024 * 1024;
+const videoUploadDir = new URL('./video-uploads/', import.meta.url);
+const videoIndexFile = new URL('./video-uploads/index.json', import.meta.url);
+let videosTableReady = false;
+
+function normalizeVideoKind(value) {
+  return value === 'blog' ? 'blog' : 'welcome';
+}
+
+async function ensureVideosTable() {
+  if (!databasePool || videosTableReady) return;
+  await databasePool.query(`
+    CREATE TABLE IF NOT EXISTS videos (
+      id text PRIMARY KEY,
+      kind text NOT NULL,
+      title text NOT NULL,
+      topic text,
+      mime_type text NOT NULL,
+      uploaded_by text NOT NULL,
+      size integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      data bytea NOT NULL
+    )
+  `);
+  videosTableReady = true;
+}
+
+function videoFromRow(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    topic: row.topic || undefined,
+    mimeType: row.mime_type,
+    uploadedBy: row.uploaded_by,
+    size: row.size,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+  };
+}
+
+async function readLocalVideoIndex() {
+  try {
+    return JSON.parse(await readFile(videoIndexFile, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalVideoIndex(videos) {
+  await mkdir(videoUploadDir, { recursive: true });
+  await writeFile(videoIndexFile, JSON.stringify(videos, null, 2));
+}
+
+async function listVideos(kind) {
+  if (databasePool) {
+    await ensureVideosTable();
+    const result = await databasePool.query(
+      'SELECT id, kind, title, topic, mime_type, uploaded_by, size, created_at FROM videos WHERE kind = $1 ORDER BY created_at DESC',
+      [kind]
+    );
+    return result.rows.map(videoFromRow);
+  }
+  const videos = await readLocalVideoIndex();
+  return videos
+    .filter((video) => video.kind === kind)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+async function insertVideo(video) {
+  if (databasePool) {
+    await ensureVideosTable();
+    await databasePool.query(
+      'INSERT INTO videos (id, kind, title, topic, mime_type, uploaded_by, size, data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [video.id, video.kind, video.title, video.topic || null, video.mimeType, video.uploadedBy, video.data.length, video.data]
+    );
+    return;
+  }
+  await mkdir(videoUploadDir, { recursive: true });
+  await writeFile(new URL(`./${video.id}.webm`, videoUploadDir), video.data);
+  const videos = await readLocalVideoIndex();
+  videos.push({ ...video, size: video.data.length, createdAt: new Date().toISOString(), data: undefined });
+  await writeLocalVideoIndex(videos);
+}
+
+async function readVideoData(id) {
+  if (databasePool) {
+    await ensureVideosTable();
+    const result = await databasePool.query('SELECT mime_type, data FROM videos WHERE id = $1', [id]);
+    if (!result.rows.length) return null;
+    return { mimeType: result.rows[0].mime_type, data: result.rows[0].data };
+  }
+  const videos = await readLocalVideoIndex();
+  const video = videos.find((entry) => entry.id === id);
+  if (!video) return null;
+  try {
+    return { mimeType: video.mimeType, data: await readFile(new URL(`./${id}.webm`, videoUploadDir)) };
+  } catch {
+    return null;
+  }
+}
+
+async function removeVideo(id) {
+  if (databasePool) {
+    await ensureVideosTable();
+    const result = await databasePool.query('DELETE FROM videos WHERE id = $1 RETURNING id', [id]);
+    return result.rowCount > 0;
+  }
+  const videos = await readLocalVideoIndex();
+  const remaining = videos.filter((video) => video.id !== id);
+  if (remaining.length === videos.length) return false;
+  await writeLocalVideoIndex(remaining);
+  try {
+    await unlink(new URL(`./${id}.webm`, videoUploadDir));
+  } catch {
+    // The index is the source of truth; a missing file changes nothing.
+  }
+  return true;
+}
+
+async function readBinaryBody(request, limit) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > limit) {
+      const error = new Error('That video is too large. Keep clips under 40 MB.');
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function sendVideoStream(request, response, video) {
+  const total = video.data.length;
+  response.setHeader('Content-Type', video.mimeType || 'video/webm');
+  response.setHeader('Accept-Ranges', 'bytes');
+  response.setHeader('Cache-Control', 'public, max-age=86400');
+
+  const range = request.headers.range;
+  const match = typeof range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (match && (match[1] || match[2])) {
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), total - 1) : total - 1;
+    if (start >= total || start > end) {
+      response.writeHead(416, { 'Content-Range': `bytes */${total}` });
+      response.end();
+      return;
+    }
+    response.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Content-Length': end - start + 1
+    });
+    response.end(video.data.subarray(start, end + 1));
+    return;
+  }
+
+  response.writeHead(200, { 'Content-Length': total });
+  response.end(video.data);
+}
+
+function requireVideoAdmin(request, response) {
+  let session;
+  try {
+    session = getAuthenticatedSession(request);
+  } catch (error) {
+    response.writeHead(401, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: 'Log in before adding or removing videos.' }));
+    return null;
+  }
+  if (session.codename.toLowerCase() !== videoAdminCodename) {
+    response.writeHead(403, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: 'Only Gayjesus can add or remove videos.' }));
+    return null;
+  }
+  return session;
+}
+
 // --- HTTP Server Logic ---
 
 httpServer.on('request', async (request, response) => {
@@ -310,7 +492,7 @@ httpServer.on('request', async (request, response) => {
     response.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('X-Frame-Options', 'DENY');
@@ -327,6 +509,95 @@ httpServer.on('request', async (request, response) => {
   if (request.method === 'GET' && (request.url === '/' || request.url === '/health' || request.url === '/api/health')) {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ status: 'ok', service: 'the-love-media-api', timestamp: new Date().toISOString() }));
+    return;
+  }
+
+  const requestUrl = new URL(request.url || '/', 'http://localhost');
+
+  // Videos are shared: any visitor can watch, only the admin can add or remove.
+  if (request.method === 'GET' && requestUrl.pathname === '/api/videos') {
+    try {
+      const videos = await listVideos(normalizeVideoKind(requestUrl.searchParams.get('kind')));
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ videos }));
+    } catch (error) {
+      console.error('Video list error:', error.message);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Could not load the videos.' }));
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && requestUrl.pathname.startsWith('/api/videos/')) {
+    try {
+      const video = await readVideoData(decodeURIComponent(requestUrl.pathname.slice('/api/videos/'.length)));
+      if (!video) {
+        response.writeHead(404, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Video not found.' }));
+        return;
+      }
+      sendVideoStream(request, response, video);
+    } catch (error) {
+      console.error('Video read error:', error.message);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Could not load that video.' }));
+    }
+    return;
+  }
+
+  if (request.method === 'DELETE' && requestUrl.pathname.startsWith('/api/videos/')) {
+    const session = requireVideoAdmin(request, response);
+    if (!session) return;
+    try {
+      const removed = await removeVideo(decodeURIComponent(requestUrl.pathname.slice('/api/videos/'.length)));
+      if (!removed) {
+        response.writeHead(404, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Video not found.' }));
+        return;
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ deleted: true }));
+    } catch (error) {
+      console.error('Video delete error:', error.message);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Could not remove that video.' }));
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && requestUrl.pathname === '/api/videos') {
+    const session = requireVideoAdmin(request, response);
+    if (!session) return;
+    try {
+      const mimeType = String(request.headers['content-type'] || 'video/webm').split(';')[0].trim();
+      if (!mimeType.startsWith('video/')) {
+        response.writeHead(415, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Only video files can be uploaded.' }));
+        return;
+      }
+      const data = await readBinaryBody(request, videoMaxBytes);
+      if (!data.length) {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'That video was empty. Try recording again.' }));
+        return;
+      }
+      const video = {
+        id: randomBytes(12).toString('hex'),
+        kind: normalizeVideoKind(requestUrl.searchParams.get('kind')),
+        title: String(requestUrl.searchParams.get('title') || '').trim().slice(0, 120) || 'Video',
+        topic: String(requestUrl.searchParams.get('topic') || '').trim().slice(0, 60) || null,
+        mimeType,
+        uploadedBy: session.codename,
+        data
+      };
+      await insertVideo(video);
+      response.writeHead(201, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ video: { ...video, data: undefined, size: data.length, createdAt: new Date().toISOString() } }));
+    } catch (error) {
+      console.error('Video upload error:', error.message);
+      response.writeHead(error.statusCode || 500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: error.statusCode ? error.message : 'Could not save that video.' }));
+    }
     return;
   }
 

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 accounts.json
+video-uploads/
 .env
 .env.*
 .vscode/.env.txt
