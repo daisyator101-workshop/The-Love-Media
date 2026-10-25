@@ -1005,105 +1005,300 @@ function renderBlogTopicList(videos, canDelete = false) {
   }).join('');
 }
 
-async function openWelcomeScreenShare(label = 'Welcome & updates') {
-  if (!navigator.mediaDevices?.getDisplayMedia) {
-    window.alert('Screen sharing is not available in this browser.');
-    return;
-  }
+function pickRecorderMimeType() {
+  const options = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4'
+  ];
+  return options.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || '';
+}
+
+function mixAudioTracks(tracks) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass || !tracks.length) return { track: null, stop: () => {} };
 
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    const existingShare = document.getElementById('welcome-screen-share');
-    if (existingShare) existingShare.remove();
-
-    const share = document.createElement('div');
-    share.className = 'group-camera-screen welcome-screen-share';
-    share.id = 'welcome-screen-share';
-    share.innerHTML = `
-      <div class="group-camera-screen-header">
-        <div>
-          <p class="eyebrow">${label}</p>
-          <h2>Live screen share</h2>
-        </div>
-        <button class="secondary-btn" id="stop-welcome-screen-share-btn" type="button">Stop sharing</button>
-      </div>
-      <div class="welcome-screen-share-preview">
-        <video id="welcome-screen-share-video" autoplay playsinline></video>
-      </div>
-      <p class="group-camera-screen-status">Your screen is being shared in this preview.</p>
-    `;
-    document.getElementById('root').appendChild(share);
-    const video = document.getElementById('welcome-screen-share-video');
-    video.srcObject = stream;
-
-    const stopSharing = () => {
-      stream.getTracks().forEach((track) => track.stop());
-      share.remove();
+    const context = new AudioContextClass();
+    const destination = context.createMediaStreamDestination();
+    tracks.forEach((track) => {
+      const source = context.createMediaStreamSource(new MediaStream([track]));
+      const gain = context.createGain();
+      gain.gain.value = 1;
+      source.connect(gain);
+      gain.connect(destination);
+    });
+    return {
+      track: destination.stream.getAudioTracks()[0] || null,
+      stop: () => {
+        try {
+          context.close();
+        } catch {
+          // The audio context is already closed.
+        }
+      }
     };
-    stream.getVideoTracks()[0].addEventListener('ended', stopSharing, { once: true });
-    document.getElementById('stop-welcome-screen-share-btn').addEventListener('click', stopSharing);
-  } catch {
+  } catch (error) {
+    console.warn('Could not combine the audio tracks', error);
+    return { track: null, stop: () => {} };
+  }
+}
+
+function createScreenComposite(screenStream, webcamStream) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+
+  const context = canvas.getContext('2d');
+  const screenVideo = document.createElement('video');
+  screenVideo.srcObject = screenStream;
+  screenVideo.muted = true;
+  screenVideo.playsInline = true;
+  screenVideo.play().catch(() => {});
+
+  let webcamVideo = null;
+  if (webcamStream) {
+    webcamVideo = document.createElement('video');
+    webcamVideo.srcObject = webcamStream;
+    webcamVideo.muted = true;
+    webcamVideo.playsInline = true;
+    webcamVideo.play().catch(() => {});
+  }
+
+  const draw = () => {
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (screenVideo.videoWidth) {
+      const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
+      const width = screenVideo.videoWidth * scale;
+      const height = screenVideo.videoHeight * scale;
+      context.drawImage(screenVideo, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+    }
+
+    if (webcamVideo?.videoWidth) {
+      const insetWidth = Math.round(canvas.width * 0.22);
+      const insetHeight = Math.round(insetWidth * (webcamVideo.videoHeight / webcamVideo.videoWidth));
+      const x = canvas.width - insetWidth - 24;
+      const y = canvas.height - insetHeight - 24;
+      context.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      context.fillRect(x - 4, y - 4, insetWidth + 8, insetHeight + 8);
+      context.drawImage(webcamVideo, x, y, insetWidth, insetHeight);
+    }
+  };
+
+  // Animation frames stop while the tab is hidden, which would freeze a recording
+  // made in another window, so a hidden tab falls back to a slower timer.
+  let frameId = 0;
+  let intervalId = 0;
+  const loop = () => {
+    draw();
+    frameId = window.requestAnimationFrame(loop);
+  };
+  const stopLoop = () => {
+    if (frameId) window.cancelAnimationFrame(frameId);
+    if (intervalId) window.clearInterval(intervalId);
+    frameId = 0;
+    intervalId = 0;
+  };
+  const startLoop = () => {
+    stopLoop();
+    if (document.hidden) intervalId = window.setInterval(draw, 250);
+    else frameId = window.requestAnimationFrame(loop);
+  };
+  const onVisibilityChange = () => startLoop();
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  startLoop();
+  draw();
+
+  return {
+    canvas,
+    stop: () => {
+      stopLoop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  };
+}
+
+function openScreenRecorder({ label = 'Welcome & updates', withWebcam = false, onSave } = {}) {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    window.alert('Screen recording is not available in this browser.');
     return;
   }
-}async function openWelcomeScreenAndWebcamShare(label = 'Welcome & updates') {
-  if (!navigator.mediaDevices?.getDisplayMedia || !navigator.mediaDevices?.getUserMedia) {
-    window.alert('Screen sharing or webcam is not available in this browser.');
+  if (!window.MediaRecorder) {
+    window.alert('This browser cannot record video.');
     return;
   }
 
-  try {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+  (async () => {
+    let screenStream;
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch (error) {
+      if (error?.name !== 'NotAllowedError') console.warn('Screen capture failed', error);
+      return;
+    }
+
     let webcamStream = null;
     try {
-      webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    } catch (err) {
-      console.warn('Webcam not available, proceeding with screen only', err);
+      webcamStream = await navigator.mediaDevices.getUserMedia(withWebcam ? { video: true, audio: true } : { audio: true });
+    } catch (error) {
+      // Without a camera or microphone the screen is still recorded.
+      console.warn('Webcam or microphone unavailable', error);
     }
 
-    const existingShare = document.getElementById('welcome-screen-share');
-    if (existingShare) existingShare.remove();
+    const existing = document.getElementById('screen-recorder-modal');
+    if (existing) existing.remove();
 
-    const share = document.createElement('div');
-    share.className = 'group-camera-screen welcome-screen-share';
-    share.id = 'welcome-screen-share';
-    share.innerHTML = `
-      <div class="group-camera-screen-header">
-        <div>
-          <p class="eyebrow">${label}</p>
-          <h2>Live screen & webcam share</h2>
+    const hasWebcam = Boolean(webcamStream?.getVideoTracks().length);
+    const modal = document.createElement('div');
+    modal.className = 'profile-editor-modal';
+    modal.id = 'screen-recorder-modal';
+    modal.innerHTML = `
+      <div class="profile-editor-card video-recorder-card">
+        <p class="eyebrow">${label}</p>
+        <h3>${hasWebcam ? 'Record screen & webcam' : 'Record screen'}</h3>
+        <div class="screen-recorder-preview" id="screen-recorder-preview"></div>
+        <p class="private-message-status" id="screen-recorder-status" aria-live="polite">
+          ${hasWebcam ? 'Screen and webcam are ready.' : 'Screen is ready.'} Press Start recording.
+        </p>
+        <div class="profile-editor-actions">
+          <button class="primary-btn" id="start-screen-recording-btn" type="button">Start recording</button>
+          <button class="danger-btn" id="stop-screen-recording-btn" type="button" disabled>Stop &amp; save</button>
+          <button class="secondary-btn" id="cancel-screen-recording-btn" type="button">Cancel</button>
         </div>
-        <button class="secondary-btn" id="stop-welcome-screen-share-btn" type="button">Stop sharing</button>
       </div>
-      <div class="welcome-screen-share-preview" style="display: flex; gap: 16px;">
-        <video id="welcome-screen-share-video" autoplay playsinline style="flex: 2; border-radius: 8px;"></video>
-        ${webcamStream ? `<video id="welcome-webcam-share-video" autoplay playsinline style="flex: 1; border-radius: 8px; object-fit: cover; max-height: 250px;" muted></video>` : ''}
-      </div>
-      <p class="group-camera-screen-status">Your screen ${webcamStream ? 'and webcam are' : 'is'} being shared in this preview.</p>
     `;
-    document.getElementById('root').appendChild(share);
-    
-    const screenVideo = document.getElementById('welcome-screen-share-video');
-    screenVideo.srcObject = screenStream;
-    
-    if (webcamStream) {
-      const webcamVideo = document.getElementById('welcome-webcam-share-video');
-      if (webcamVideo) webcamVideo.srcObject = webcamStream;
+    document.body.appendChild(modal);
+
+    const preview = document.getElementById('screen-recorder-preview');
+    const status = document.getElementById('screen-recorder-status');
+    const startButton = document.getElementById('start-screen-recording-btn');
+    const stopButton = document.getElementById('stop-screen-recording-btn');
+    const cancelButton = document.getElementById('cancel-screen-recording-btn');
+
+    const composite = hasWebcam ? createScreenComposite(screenStream, webcamStream) : null;
+    if (composite) {
+      preview.appendChild(composite.canvas);
+    } else {
+      const screenVideo = document.createElement('video');
+      screenVideo.srcObject = screenStream;
+      screenVideo.autoplay = true;
+      screenVideo.muted = true;
+      screenVideo.playsInline = true;
+      preview.appendChild(screenVideo);
     }
 
-    const stopSharing = () => {
+    let recorder = null;
+    let chunks = [];
+    let mixer = null;
+    let shareWatchId = 0;
+    let cancelled = false;
+    let closed = false;
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      window.clearInterval(shareWatchId);
       screenStream.getTracks().forEach((track) => track.stop());
-      if (webcamStream) {
-        webcamStream.getTracks().forEach((track) => track.stop());
-      }
-      share.remove();
+      webcamStream?.getTracks().forEach((track) => track.stop());
+      composite?.stop();
+      mixer?.stop();
+      modal.remove();
     };
-    
-    screenStream.getVideoTracks()[0].addEventListener('ended', stopSharing, { once: true });
-    document.getElementById('stop-welcome-screen-share-btn').addEventListener('click', stopSharing);
-  } catch (err) {
-    console.error(err);
-    return;
-  }
+
+    const finish = async (blob) => {
+      if (!blob.size) {
+        status.textContent = 'Nothing was recorded. Record for a few seconds, then stop.';
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        return;
+      }
+      if (blob.size > 40 * 1024 * 1024) {
+        status.textContent = 'That recording is larger than 40 MB. Record a shorter clip.';
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        return;
+      }
+      status.textContent = 'Saving your recording...';
+      try {
+        await onSave(blob);
+        cleanup();
+      } catch (error) {
+        status.textContent = `The recording could not be saved: ${error?.message || error}`;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+      }
+    };
+
+    startButton.addEventListener('click', () => {
+      const mimeType = pickRecorderMimeType();
+      mixer?.stop();
+      mixer = mixAudioTracks([
+        ...screenStream.getAudioTracks(),
+        ...(webcamStream?.getAudioTracks() || [])
+      ]);
+
+      const tracks = composite
+        ? composite.canvas.captureStream(30).getVideoTracks()
+        : screenStream.getVideoTracks();
+      const recorderTracks = [...tracks];
+      if (mixer.track) recorderTracks.push(mixer.track);
+
+      chunks = [];
+      try {
+        recorder = new MediaRecorder(new MediaStream(recorderTracks), mimeType ? { mimeType } : undefined);
+      } catch (error) {
+        status.textContent = `Recording could not start: ${error?.message || error}`;
+        return;
+      }
+
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      });
+      recorder.addEventListener('stop', () => {
+        const type = String(recorder.mimeType || mimeType || 'video/webm').split(';')[0];
+        const blob = new Blob(chunks, { type });
+        if (cancelled) {
+          cleanup();
+          return;
+        }
+        finish(blob);
+      }, { once: true });
+
+      recorder.start();
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      status.textContent = 'Recording now. Switch to the window you are showing, then press Stop & save.';
+
+      // Chrome's own "Stop sharing" button ends the track without always firing
+      // an ended event, so the track state is watched as well.
+      window.clearInterval(shareWatchId);
+      shareWatchId = window.setInterval(() => {
+        if (screenStream.getVideoTracks()[0]?.readyState === 'ended') stopRecording();
+      }, 1000);
+    });
+
+    const stopRecording = () => {
+      if (recorder?.state !== 'recording') return;
+      window.clearInterval(shareWatchId);
+      recorder.stop();
+      stopButton.disabled = true;
+      status.textContent = 'Saving your recording...';
+    };
+
+    stopButton.addEventListener('click', stopRecording);
+    screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (recorder?.state === 'recording') stopRecording();
+    }, { once: true });
+    cancelButton.addEventListener('click', () => {
+      cancelled = true;
+      if (recorder?.state === 'recording') recorder.stop();
+      cleanup();
+    });
+  })();
 }
 
 function openWelcomeVideosModal() {
@@ -1128,8 +1323,8 @@ function openWelcomeVideosModal() {
         </div>
         <div class="profile-editor-actions video-actions" style="margin-top: 12px;">
           <button class="small-btn" id="record-welcome-video-btn" type="button">Record video</button>
-          <button class="small-btn" id="start-welcome-screen-share-btn" type="button">Start screen share</button>
-          <button class="small-btn" id="start-welcome-screen-webcam-btn" type="button">Screen & Webcam</button>
+          <button class="small-btn" id="start-welcome-screen-share-btn" type="button">Record screen</button>
+          <button class="small-btn" id="start-welcome-screen-webcam-btn" type="button">Record screen & webcam</button>
         </div>
         <p class="private-message-status" id="welcome-video-status" aria-live="polite"></p>
       ` : `
@@ -1155,19 +1350,31 @@ loadVideosInto(welcomeVideosList, 'welcome', isGayjesus);
 if (isGayjesus) {
   const titleInput = document.getElementById('welcome-video-title');
   const status = document.getElementById('welcome-video-status');
+  const saveWelcomeClip = async (blob, fallbackTitle) => {
+    await uploadVideo('welcome', blob, { title: titleInput.value.trim() || fallbackTitle });
+    await loadVideosInto(welcomeVideosList, 'welcome', isGayjesus);
+    status.textContent = 'Video added to welcome & updates.';
+  };
   document.getElementById('record-welcome-video-btn').addEventListener('click', () => {
     startVideoRecorder({
       titleInput,
       status,
-      onSave: async (blob) => {
-        await uploadVideo('welcome', blob, { title: titleInput.value.trim() || 'Welcome update' });
-        await loadVideosInto(welcomeVideosList, 'welcome', isGayjesus);
-        status.textContent = 'Recorded video added.';
-      }
+      onSave: (blob) => saveWelcomeClip(blob, 'Welcome update')
     });
   });
-  document.getElementById('start-welcome-screen-share-btn').addEventListener('click', openWelcomeScreenShare);
-  document.getElementById('start-welcome-screen-webcam-btn').addEventListener('click', () => openWelcomeScreenAndWebcamShare('Welcome & updates'));
+  document.getElementById('start-welcome-screen-share-btn').addEventListener('click', () => {
+    openScreenRecorder({
+      label: 'Welcome & updates',
+      onSave: (blob) => saveWelcomeClip(blob, 'Screen recording')
+    });
+  });
+  document.getElementById('start-welcome-screen-webcam-btn').addEventListener('click', () => {
+    openScreenRecorder({
+      label: 'Welcome & updates',
+      withWebcam: true,
+      onSave: (blob) => saveWelcomeClip(blob, 'Screen & webcam recording')
+    });
+  });
 }
 
 document.getElementById('close-welcome-videos-btn').addEventListener('click', () => {
@@ -1217,8 +1424,8 @@ function openGayjesusBlogModal() {
         </div>
         <div class="profile-editor-actions video-actions" style="margin-top: 12px;">
           <button class="small-btn" id="record-blog-video-btn" type="button">Record video</button>
-          <button class="small-btn" id="start-blog-screen-share-btn" type="button">Start screen share</button>
-          <button class="small-btn" id="start-blog-screen-webcam-btn" type="button">Screen & Webcam</button>
+          <button class="small-btn" id="start-blog-screen-share-btn" type="button">Record screen</button>
+          <button class="small-btn" id="start-blog-screen-webcam-btn" type="button">Record screen & webcam</button>
         </div>
         <p class="private-message-status" id="blog-video-status" aria-live="polite"></p>
       ` : `
@@ -1245,24 +1452,36 @@ if (isGayjesus) {
   const titleInput = document.getElementById('blog-video-title');
   const customTopicInput = document.getElementById('blog-custom-topic');
   const status = document.getElementById('blog-video-status');
+  const saveBlogClip = async (blob, fallbackTitle) => {
+    const topic = customTopicInput.value.trim();
+    await uploadVideo('blog', blob, {
+      title: titleInput.value.trim() || (topic ? 'Topic update' : fallbackTitle),
+      topic
+    });
+    await loadVideosInto(blogVideosList, 'blog', isGayjesus);
+    status.textContent = 'Video added to the blog.';
+  };
   document.getElementById('record-blog-video-btn').addEventListener('click', () => {
     startVideoRecorder({
       titleInput,
       topicInput: customTopicInput,
       status,
-      onSave: async (blob) => {
-        const topic = customTopicInput.value.trim();
-        await uploadVideo('blog', blob, {
-          title: titleInput.value.trim() || (topic ? 'Topic update' : 'Welcome update'),
-          topic
-        });
-        await loadVideosInto(blogVideosList, 'blog', isGayjesus);
-        status.textContent = 'Topic video added.';
-      }
+      onSave: (blob) => saveBlogClip(blob, 'Welcome update')
     });
   });
-  document.getElementById('start-blog-screen-share-btn').addEventListener('click', () => openWelcomeScreenShare('Gayjesus blog'));
-  document.getElementById('start-blog-screen-webcam-btn').addEventListener('click', () => openWelcomeScreenAndWebcamShare('Gayjesus blog'));
+  document.getElementById('start-blog-screen-share-btn').addEventListener('click', () => {
+    openScreenRecorder({
+      label: 'Gayjesus blog',
+      onSave: (blob) => saveBlogClip(blob, 'Screen recording')
+    });
+  });
+  document.getElementById('start-blog-screen-webcam-btn').addEventListener('click', () => {
+    openScreenRecorder({
+      label: 'Gayjesus blog',
+      withWebcam: true,
+      onSave: (blob) => saveBlogClip(blob, 'Screen & webcam recording')
+    });
+  });
 }
 
 document.getElementById('close-gayjesus-blog-btn').addEventListener('click', () => {
