@@ -32,10 +32,11 @@ The static site and the API can both stay on Render's free plan.
 
 ## App download link
 
-The login page footer links to the app installer. Set `VITE_APP_DOWNLOAD_URL` to
-the public installer URL (a Microsoft Store listing, a Google Play listing, or a
-hosted `.msix`/`.exe` file) and rebuild. Until it is set, the login page shows
-"App download coming soon" rather than a broken link.
+The login page footer links to the app installer. By default the button points at
+the Windows `.msi` published on this repository's GitHub releases; set
+`VITE_APP_DOWNLOAD_URL` to something else (a Microsoft Store listing, a Google
+Play listing, or your own hosted `.msi`/`.exe`) and rebuild to override it. Leave
+it empty only if you want the "App download coming soon" placeholder.
 
 ## Stripe donation setup
 

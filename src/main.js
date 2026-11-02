@@ -23,8 +23,14 @@ function getWebSocketBaseUrl() {
   return '';
 }
 
+// The Windows installer published on GitHub releases. This is the default so the
+// login page always offers a real download; VITE_APP_DOWNLOAD_URL overrides it
+// (for example with a Microsoft Store or Google Play listing) without a code change.
+const defaultAppDownloadUrl =
+  'https://github.com/daisyator101-workshop/The-Love-Media/releases/download/v0.1.1/The.Love.Media_0.1.0_x64_en-US.msi';
+
 function getAppDownloadUrl() {
-  return (import.meta.env.VITE_APP_DOWNLOAD_URL || '').trim();
+  return (import.meta.env.VITE_APP_DOWNLOAD_URL || defaultAppDownloadUrl).trim();
 }
 
 let apiBaseUrl = getApiBaseUrl();
@@ -483,9 +489,9 @@ function renderLoginPage() {
           <div class="app-download">
             <p class="app-download-label">Get the app</p>
             ${appDownloadUrl
-              ? `<a class="app-download-btn" id="app-download-btn" href="${appDownloadUrl}" rel="noopener">Download for your phone, computer or device</a>`
+              ? `<a class="app-download-btn" id="app-download-btn" href="${appDownloadUrl}" rel="noopener">Download the Windows app</a>`
               : `<span class="app-download-btn is-unavailable" id="app-download-btn">App download coming soon</span>`}
-            <p class="app-download-note">Windows app for the Microsoft Store, Android for Google Play.</p>
+            <p class="app-download-note">Windows 10 or 11 installer (.msi). Phone apps are still on the way.</p>
           </div>
           <p class="secondary-text" style="margin-top: 10px; font-size: 0.75rem; opacity: 0.6;">
             Server: <span id="server-status-label">${getApiBaseUrl() || 'Not configured'}</span>
