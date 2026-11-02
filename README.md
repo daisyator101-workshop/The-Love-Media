@@ -38,6 +38,15 @@ the Windows `.msi` published on this repository's GitHub releases; set
 Play listing, or your own hosted `.msi`/`.exe`) and rebuild to override it. Leave
 it empty only if you want the "App download coming soon" placeholder.
 
+## Phone app (install from the browser)
+
+The site is installable, so there is no Android or iPhone file to download. It
+ships `public/manifest.webmanifest`, the app icons, and a pass-through
+`public/sw.js` that caches nothing. On Android, Chrome offers **Install app**
+(the "Install the app" button under the Windows download); on iPhone, use
+Share > Add to Home Screen. Installed copies open full screen with the heart
+icon and get the newest deploy on the next launch.
+
 ## Stripe donation setup
 
 1. In the project folder, copy `.env.example` and name the copy `.env`.

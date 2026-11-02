@@ -33,6 +33,41 @@ function getAppDownloadUrl() {
   return (import.meta.env.VITE_APP_DOWNLOAD_URL || defaultAppDownloadUrl).trim();
 }
 
+// Phones install the site itself rather than downloading a file: Android fires
+// beforeinstallprompt once the manifest and service worker check out, and the
+// event has to be kept until the visitor presses the install button.
+let installPromptEvent = null;
+
+function isRunningInstalled() {
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches === true ||
+    window.navigator.standalone === true
+  );
+}
+
+function refreshInstallButton() {
+  const installButton = document.getElementById('app-install-btn');
+  if (!installButton) return;
+  installButton.hidden = !installPromptEvent || isRunningInstalled();
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPromptEvent = event;
+  refreshInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  installPromptEvent = null;
+  refreshInstallButton();
+});
+
+if ('serviceWorker' in navigator && !isLocalDevelopment) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 let apiBaseUrl = getApiBaseUrl();
 let webSocketBaseUrl = getWebSocketBaseUrl();
 let currentProfileName = 'Gayjesus';
@@ -491,7 +526,8 @@ function renderLoginPage() {
             ${appDownloadUrl
               ? `<a class="app-download-btn" id="app-download-btn" href="${appDownloadUrl}" rel="noopener">Download the Windows app</a>`
               : `<span class="app-download-btn is-unavailable" id="app-download-btn">App download coming soon</span>`}
-            <p class="app-download-note">Windows 10 or 11 installer (.msi). Phone apps are still on the way.</p>
+            <button class="app-download-btn app-install-btn" id="app-install-btn" type="button" hidden>Install the app</button>
+            <p class="app-download-note">Windows 10 or 11 installer (.msi). On a phone, use your browser's Add to Home screen.</p>
           </div>
           <p class="secondary-text" style="margin-top: 10px; font-size: 0.75rem; opacity: 0.6;">
             Server: <span id="server-status-label">${getApiBaseUrl() || 'Not configured'}</span>
@@ -589,6 +625,19 @@ function renderLoginPage() {
       if (label) label.textContent = clean;
     }
   });
+  document.getElementById('app-install-btn')?.addEventListener('click', async () => {
+    if (!installPromptEvent) return;
+    const promptEvent = installPromptEvent;
+    promptEvent.prompt();
+    try {
+      await promptEvent.userChoice;
+    } catch {
+      // The install sheet was dismissed; the button simply hides.
+    }
+    installPromptEvent = null;
+    refreshInstallButton();
+  });
+  refreshInstallButton();
 }
 
 function openForgotPasswordPage() {

@@ -572,6 +572,26 @@ button, input {
   cursor: default;
 }
 
+.app-install-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-install-btn:hover,
+.app-install-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+  box-shadow: none;
+}
+
+/* The button starts hidden until Android offers an install prompt, and the
+   display rule above would otherwise override the hidden attribute. */
+.app-install-btn[hidden] {
+  display: none;
+}
+
 .app-download-note {
   margin: 0;
   color: #d9c4ee;
