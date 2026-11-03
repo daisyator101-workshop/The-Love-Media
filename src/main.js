@@ -538,6 +538,8 @@ function renderLoginPage() {
           <p class="secondary-text" style="margin-top: 10px; font-size: 0.75rem; opacity: 0.6;">
             Server: <span id="server-status-label">${getApiBaseUrl() || 'Not configured'}</span>
             <button class="inline-link-button" id="configure-server-link" type="button" style="margin-left: 4px;">(set URL)</button>
+            ·
+            <a class="inline-link-button" id="privacy-policy-link" href="/privacy.html">Privacy policy</a>
           </p>
         </div>
       </div>
@@ -793,6 +795,10 @@ function renderCreateAccountPage() {
         <div class="form-footer">
           <p class="secondary-text">
             Already have an account? <button class="inline-link-button" id="back-to-login-link" type="button">Log in</button>
+          </p>
+          <p class="secondary-text">
+            By creating an account you agree to our
+            <a class="inline-link-button" href="/privacy.html">privacy policy</a>.
           </p>
         </div>
       </div>

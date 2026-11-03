@@ -47,6 +47,14 @@ ships `public/manifest.webmanifest`, the app icons, and a pass-through
 Share > Add to Home Screen. Installed copies open full screen with the heart
 icon and get the newest deploy on the next launch.
 
+## Privacy policy
+
+`public/privacy.html` is a standalone page served at
+`https://the-love-media.vercel.app/privacy.html`, linked from the login page and the
+create-account form. Use that URL wherever a privacy policy link is required (for
+example the Microsoft Store listing). If you would rather take questions by email,
+swap the GitHub links near the top and bottom of the page for a `mailto:` address.
+
 ## Stripe donation setup
 
 1. In the project folder, copy `.env.example` and name the copy `.env`.
