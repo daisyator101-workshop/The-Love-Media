@@ -3,13 +3,19 @@ import './index.css';
 const app = document.getElementById('root');
 const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+// The free Render API this site talks to. A fresh browser has no saved URL and
+// the Vercel build sets no VITE_API_URL, so without a default the login page read
+// "Server: Not configured" and made new visitors paste a backend URL by hand.
+const productionApiUrl = 'https://the-love-media-api.onrender.com';
+const productionWebSocketUrl = 'wss://the-love-media-api.onrender.com';
+
 function getApiBaseUrl() {
   const envUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
   const storedUrl = (localStorage.getItem('the-love-media-api-url') || '').trim().replace(/\/+$/, '');
   if (envUrl) return envUrl;
   if (storedUrl) return storedUrl;
   if (isLocalDevelopment) return `http://${window.location.hostname}:3002`;
-  return '';
+  return productionApiUrl;
 }
 
 function getWebSocketBaseUrl() {
@@ -20,7 +26,7 @@ function getWebSocketBaseUrl() {
   const api = getApiBaseUrl();
   if (api) return api.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
   if (isLocalDevelopment) return `ws://${window.location.hostname}:3002`;
-  return '';
+  return productionWebSocketUrl;
 }
 
 // The Windows installer published on GitHub releases. This is the default so the
@@ -299,7 +305,7 @@ async function accountApi(path, payload) {
   let targetBaseUrl = getApiBaseUrl();
   if (!targetBaseUrl) {
     const entered = window.prompt(
-      'Your Koyeb backend server URL is not configured.\n\nPlease enter your Koyeb backend URL (for example: https://my-app.koyeb.app):',
+      'The server URL is not configured.\n\nPlease enter it (for example: https://the-love-media-api.onrender.com):',
       'https://'
     );
     if (entered && entered.trim() && entered.trim() !== 'https://') {
@@ -311,7 +317,7 @@ async function accountApi(path, payload) {
       const statusLabel = document.getElementById('server-status-label');
       if (statusLabel) statusLabel.textContent = cleanUrl;
     } else {
-      throw new Error('Backend URL is required. Click "(set URL)" below to enter your Koyeb backend URL.');
+      throw new Error('Server URL is required. Click "(set URL)" below to enter it.');
     }
   }
 
@@ -336,7 +342,7 @@ async function accountApi(path, payload) {
         continue;
       }
       if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
-        throw new Error(`Cannot reach backend at "${targetBaseUrl}". Verify Koyeb is healthy or click "(set URL)" to update.`);
+        throw new Error(`Cannot reach the server at "${targetBaseUrl}". Check your connection or click "(set URL)" to change it.`);
       }
       throw error;
     }
@@ -615,7 +621,7 @@ function renderLoginPage() {
   document.getElementById('forgot-password-link').addEventListener('click', openForgotPasswordPage);
   document.getElementById('configure-server-link')?.addEventListener('click', () => {
     const current = getApiBaseUrl() || 'https://';
-    const entered = window.prompt('Enter your Koyeb backend URL (for example: https://my-app.koyeb.app):', current);
+    const entered = window.prompt('Enter the server URL (for example: https://the-love-media-api.onrender.com):', current);
     if (entered && entered.trim() && entered.trim() !== 'https://') {
       const clean = entered.trim().replace(/\/+$/, '');
       localStorage.setItem('the-love-media-api-url', clean);
