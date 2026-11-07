@@ -237,6 +237,74 @@ function clearPersistedSession() {
   localStorage.removeItem('the-love-media-profile');
 }
 
+// A member stays signed in on this device until they sign out: without this the
+// session only lived in memory, so reopening the site (or the installed app, which
+// starts at "/") dropped them on an empty login form every single time.
+const savedSessionKey = 'the-love-media-session';
+const savedSessionLifetimeMs = 8 * 60 * 60 * 1000;
+
+function saveSession(codename, token) {
+  if (!codename || !token) return;
+  try {
+    localStorage.setItem(savedSessionKey, JSON.stringify({ codename, token, savedAt: Date.now() }));
+  } catch {
+    // Private browsing can refuse storage; the visit still works, it just won't be remembered.
+  }
+}
+
+function loadSavedSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(savedSessionKey) || 'null');
+    if (!saved?.codename || !saved?.token) return null;
+    if (Date.now() - Number(saved.savedAt || 0) > savedSessionLifetimeMs) {
+      localStorage.removeItem(savedSessionKey);
+      return null;
+    }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function clearSavedSession() {
+  currentSessionToken = '';
+  try {
+    localStorage.removeItem(savedSessionKey);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+function restoreSavedSession() {
+  const saved = loadSavedSession();
+  if (!saved) return false;
+  currentProfileName = saved.codename;
+  currentSessionToken = saved.token;
+  return true;
+}
+
+// The server keeps sessions in memory, so a restart or a sleeping free instance
+// forgets them. Check quietly on load and only bounce back if the token is dead.
+async function validateSavedSession() {
+  if (!currentSessionToken) return;
+  try {
+    const result = await accountApi('/api/session', {});
+    if (result?.codename) currentProfileName = result.codename;
+  } catch (error) {
+    // Only a real refusal signs them out. A network blip, or a server that has not
+    // picked up this endpoint yet, must not throw away a perfectly good session.
+    if (!/authentication required|session expired/i.test(error?.message || '')) return;
+    clearSavedSession();
+    const hash = window.location.hash;
+    const onSignedInScreen = hash === '#welcome' || hash === '#workspace' || /^#room\//.test(hash);
+    if (!onSignedInScreen) return;
+    window.history.replaceState({ screen: 'login' }, '', window.location.pathname);
+    renderLoginPage();
+    const status = document.getElementById('login-status');
+    if (status) status.textContent = 'Your session timed out. Log in again to pick up where you left off.';
+  }
+}
+
 function savePrivateMail() {
   localStorage.setItem('the-love-media-private-mail', JSON.stringify(privateMail));
 }
@@ -577,6 +645,7 @@ function renderLoginPage() {
       const result = await accountApi('/api/login', { codename, password });
       currentProfileName = result.codename;
       currentSessionToken = result.sessionToken || '';
+      saveSession(currentProfileName, currentSessionToken);
       currentProfileBio = result.profile?.bio || 'A little about you goes here.';
       currentProfileStatuses = result.profile?.statuses || [];
       currentConnectionStatus = result.profile?.connectionStatus || '';
@@ -816,12 +885,20 @@ function renderCreateAccountPage() {
       return;
     }
     try {
-      await accountApi('/api/accounts', { codename, resetKey, password });
+      const result = await accountApi('/api/accounts', { codename, resetKey, password });
       accounts = [...accounts, { codename }];
       localStorage.setItem('the-love-media-accounts', JSON.stringify(accounts));
-      currentProfileName = codename;
+      currentProfileName = result.codename || codename;
+      currentSessionToken = result.sessionToken || '';
+      saveSession(currentProfileName, currentSessionToken);
+      if (currentSessionToken) {
+        status.textContent = 'Account created. Taking you in...';
+        openWelcomePage();
+        return;
+      }
+      // Older server without the sign-up session: fall back to the login form.
       status.textContent = 'Account created. You can now log in.';
-      window.setTimeout(renderLoginPage, 700);
+      window.setTimeout(renderLoginPage, 900);
     } catch (error) {
       status.textContent = error.message;
     }
@@ -1722,6 +1799,7 @@ function renderNextPage() {
     try {
       await accountApi('/api/delete-account', { codename: currentProfileName });
       accounts = accounts.filter((account) => account.codename.toLowerCase() !== currentProfileName.toLowerCase());
+      clearSavedSession();
       localStorage.removeItem('the-love-media-profile');
       localStorage.removeItem('the-love-media-friends');
       status.textContent = 'Account deleted.';
@@ -3229,7 +3307,7 @@ function renderChatroomWorkspace(profileToView = null) {
   document.getElementById('sign-out-btn').addEventListener('click', () => {
     privateMessageOpener = null;
     groupChatActive = false;
-    currentSessionToken = '';
+    clearSavedSession();
     clearPersistedSession();
     renderLoginPage();
   });
@@ -3407,11 +3485,19 @@ function renderInitialRoute() {
     openWelcomeVideosModal();
     return;
   }
+  // Reopening the site (or the installed app, whose start URL is "/") should pick
+  // up where they left off instead of asking for a password again.
+  if (!hash && currentSessionToken) {
+    openWelcomePage();
+    return;
+  }
   renderLoginPage();
 }
 
 migrateLocalAccounts();
+const restoredSavedSession = restoreSavedSession();
 renderInitialRoute();
+if (restoredSavedSession) validateSavedSession();
 
 const handleAuthHistoryBack = (event) => {
   const authHeading = document.querySelector('.login-card h1')?.textContent;

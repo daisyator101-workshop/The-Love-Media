@@ -139,12 +139,16 @@ function getAuthenticatedSession(request) {
   const session = sessions.get(token);
   
   if (!session) {
-    throw new Error('Authentication required.');
+    const error = new Error('Authentication required.');
+    error.statusCode = 401;
+    throw error;
   }
   
   if (session.expiresAt <= Date.now()) {
     sessions.delete(token);
-    throw new Error('Session expired.');
+    const error = new Error('Session expired.');
+    error.statusCode = 401;
+    throw error;
   }
   
   return session;
@@ -699,7 +703,7 @@ httpServer.on('request', async (request, response) => {
       const passwordData = hashPassword(password);
       const resetKeyData = hashPassword(resetKey);
       
-      accounts.push({
+      const newAccount = {
         codename,
         resetKeySalt: resetKeyData.salt,
         resetKeyHash: resetKeyData.hash,
@@ -710,7 +714,8 @@ httpServer.on('request', async (request, response) => {
           statuses: Array.isArray(body.profile?.statuses) ? body.profile.statuses : [],
           connectionStatus: String(body.profile?.connectionStatus || '')
         }
-      });
+      };
+      accounts.push(newAccount);
       
       await saveAccounts(accounts);
       
@@ -718,8 +723,14 @@ httpServer.on('request', async (request, response) => {
       const rateLimitKey = `${getClientAddress(request)}:${request.url}`;
       authRateLimits.delete(rateLimitKey);
       
+      // Hand back a session straight away so a new member walks in instead of
+      // being dropped back on the login form they just filled in.
       response.writeHead(201, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ codename }));
+      response.end(JSON.stringify({
+        codename,
+        profile: newAccount.profile,
+        sessionToken: createSession(newAccount)
+      }));
       return;
     }
 
@@ -762,6 +773,19 @@ httpServer.on('request', async (request, response) => {
       
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ reset: true }));
+      return;
+    }
+
+    // Lets a browser that saved its session check on load whether the token is
+    // still good (the server forgets sessions when it restarts).
+    if (request.url === '/api/session') {
+      const session = getAuthenticatedSession(request);
+      const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === session.codename.toLowerCase());
+
+      if (!account) throw new Error('Authentication required.');
+
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ codename: account.codename, profile: account.profile || {} }));
       return;
     }
 
