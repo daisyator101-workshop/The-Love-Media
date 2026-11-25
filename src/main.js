@@ -426,6 +426,7 @@ let locationShared = false;
 let locationSharePending = false;
 let memberDistances = new Map();
 let locationRefreshTimer = null;
+let locationPromptedThisSession = false;
 const locationRefreshMs = 30 * 1000;
 
 function formatMiles(miles) {
@@ -479,6 +480,14 @@ function startLocationRefresh() {
 function stopLocationRefresh() {
   if (locationRefreshTimer) window.clearInterval(locationRefreshTimer);
   locationRefreshTimer = null;
+}
+
+// The room is the only place distances are shown, so ask as soon as it opens:
+// once per visit, and never again after a member turns sharing off.
+function requestLocationOnRoomEntry() {
+  if (locationShared || locationSharePending || locationPromptedThisSession) return;
+  locationPromptedThisSession = true;
+  startSharingLocation();
 }
 
 function startSharingLocation() {
@@ -3233,7 +3242,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
   });
   updateLocationButton();
   startLocationRefresh();
-  refreshMemberDistances();
+  refreshMemberDistances().then(requestLocationOnRoomEntry);
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.room-mate-trigger') && !e.target.closest('.profile-menu')) {
