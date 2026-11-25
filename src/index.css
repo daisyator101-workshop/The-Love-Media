@@ -1720,6 +1720,46 @@ button, input {
   font-weight: 700;
 }
 
+.room-mate-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.room-mate-name {
+  overflow-wrap: anywhere;
+}
+
+.room-mate-distance {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #ffe8fb;
+  white-space: nowrap;
+}
+
+.room-location-btn {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.room-location-status {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: #f3e6ff;
+}
+
+.profile-menu-distance {
+  margin: -2px 0 8px;
+  padding: 0 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  color: #ffd9f4;
+}
+
 .room-chat-composer textarea {
   flex: 1;
   min-height: 42px;

@@ -214,6 +214,7 @@ function connectRoomPresence(roomName = null) {
     updateFeaturedRoomTiles();
     updateRadarMembers();
     roomMatesRenderer?.();
+    if (locationShared) refreshMemberDistances();
   };
 }
 
@@ -416,6 +417,115 @@ async function accountApi(path, payload) {
     }
   }
   throw lastError || new Error('Account service unavailable.');
+}
+
+// --- Location sharing ---
+// The browser asks permission before anything is sent, and the server answers
+// with rounded mileage only, so no member ever receives another's coordinates.
+let locationShared = false;
+let locationSharePending = false;
+let memberDistances = new Map();
+let locationRefreshTimer = null;
+const locationRefreshMs = 30 * 1000;
+
+function formatMiles(miles) {
+  if (!Number.isFinite(miles)) return '';
+  return miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi`;
+}
+
+function updateLocationButton() {
+  const button = document.getElementById('room-location-btn');
+  if (button) {
+    button.textContent = locationShared ? 'Stop sharing my location' : 'Share my location';
+    button.disabled = locationSharePending;
+  }
+  roomMatesRenderer?.();
+}
+
+function setLocationStatus(message) {
+  const status = document.getElementById('room-location-status');
+  if (status) status.textContent = message;
+}
+
+async function refreshMemberDistances() {
+  try {
+    const result = await accountApi('/api/locations', {});
+    if (!Array.isArray(result.members)) return;
+    const wasSharing = locationShared;
+    // The server keeps a shared location for a few hours, so a member who
+    // reloads the page is still sharing and should see that reflected here.
+    locationShared = Boolean(result.shared);
+    memberDistances = new Map(result.members.map((member) => [member.codename, member.miles]));
+    if (!wasSharing && locationShared) {
+      setLocationStatus('Location shared. Room mates can see how far away you are.');
+    } else if (wasSharing && !locationShared) {
+      setLocationStatus('Location sharing ended. Share again to show your distance.');
+    }
+    updateLocationButton();
+  } catch {
+    // A distance is a nice-to-have; a failed refresh must not break the room.
+  }
+}
+
+// Distances change as other members start or stop sharing, so the room panel
+// asks again while it is open.
+function startLocationRefresh() {
+  stopLocationRefresh();
+  locationRefreshTimer = window.setInterval(() => {
+    if (locationShared) refreshMemberDistances();
+  }, locationRefreshMs);
+}
+
+function stopLocationRefresh() {
+  if (locationRefreshTimer) window.clearInterval(locationRefreshTimer);
+  locationRefreshTimer = null;
+}
+
+function startSharingLocation() {
+  if (!navigator.geolocation) {
+    setLocationStatus('This browser cannot share a location.');
+    return;
+  }
+
+  locationSharePending = true;
+  updateLocationButton();
+  setLocationStatus('Waiting for the browser location prompt...');
+
+  navigator.geolocation.getCurrentPosition(async (position) => {
+    try {
+      const result = await accountApi('/api/location', {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      });
+      locationShared = true;
+      memberDistances = new Map((result.members || []).map((member) => [member.codename, member.miles]));
+      setLocationStatus('Location shared. Room mates can see how far away you are.');
+    } catch (error) {
+      setLocationStatus(error.message || 'Could not share your location right now.');
+    } finally {
+      locationSharePending = false;
+      updateLocationButton();
+    }
+  }, (error) => {
+    locationSharePending = false;
+    setLocationStatus(error.code === 1
+      ? 'Location permission was declined. Allow it in your browser to show your distance.'
+      : 'Your location could not be read right now.');
+    updateLocationButton();
+  }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 5 * 60 * 1000 });
+}
+
+async function stopSharingLocation() {
+  locationShared = false;
+  locationSharePending = false;
+  memberDistances = new Map();
+  setLocationStatus('Location sharing is off.');
+  updateLocationButton();
+  try {
+    await accountApi('/api/location', { clear: true });
+  } catch {
+    // The server forgets a shared location on its own after a few hours.
+  }
 }
 
 async function migrateLocalAccounts() {
@@ -2602,6 +2712,8 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
           </div>
           <aside class="room-side-panel">
             <p class="room-side-label">Room mates</p>
+            <button class="small-btn room-location-btn" id="room-location-btn" type="button">Share my location</button>
+            <p class="room-location-status" id="room-location-status" aria-live="polite">Accept the browser prompt to show room mates how far away you are.</p>
             <div id="room-mates-list"></div>
           </aside>
         </div>
@@ -2657,7 +2769,17 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const roomMate = document.createElement('button');
     roomMate.className = 'room-side-pill room-mate-trigger';
     roomMate.type = 'button';
-    roomMate.textContent = name;
+    const roomMateName = document.createElement('span');
+    roomMateName.className = 'room-mate-name';
+    roomMateName.textContent = name;
+    roomMate.append(roomMateName);
+    const mateMiles = memberDistances.get(name);
+    if (name !== currentProfileName && Number.isFinite(mateMiles)) {
+      const roomMateDistance = document.createElement('span');
+      roomMateDistance.className = 'room-mate-distance';
+      roomMateDistance.textContent = formatMiles(mateMiles);
+      roomMate.appendChild(roomMateDistance);
+    }
 
     const roomMateMenu = document.createElement('div');
     roomMateMenu.className = 'profile-menu hidden';
@@ -2666,6 +2788,14 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     roomMateMenuName.className = 'profile-menu-name';
     roomMateMenuName.textContent = name;
     roomMateMenu.appendChild(roomMateMenuName);
+
+    const menuMiles = memberDistances.get(name);
+    if (name !== currentProfileName && Number.isFinite(menuMiles)) {
+      const roomMateMenuDistance = document.createElement('p');
+      roomMateMenuDistance.className = 'profile-menu-distance';
+      roomMateMenuDistance.textContent = `${formatMiles(menuMiles)} away`;
+      roomMateMenu.appendChild(roomMateMenuDistance);
+    }
 
     ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
       const action = document.createElement('button');
@@ -3094,6 +3224,17 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
   roomMatesRenderer = renderRoomMates;
   renderRoomMates();
 
+  document.getElementById('room-location-btn')?.addEventListener('click', () => {
+    if (locationShared) {
+      stopSharingLocation();
+    } else {
+      startSharingLocation();
+    }
+  });
+  updateLocationButton();
+  startLocationRefresh();
+  refreshMemberDistances();
+
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.room-mate-trigger') && !e.target.closest('.profile-menu')) {
       document.querySelectorAll('#room-mates-list .profile-menu').forEach(m => m.classList.add('hidden'));
@@ -3110,6 +3251,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
   document.getElementById('exit-room-btn').addEventListener('click', () => {
     groupChatActive = false;
     roomMatesRenderer = null;
+    stopLocationRefresh();
     window.history.back();
   });
 
@@ -3307,6 +3449,12 @@ function renderChatroomWorkspace(profileToView = null) {
   document.getElementById('sign-out-btn').addEventListener('click', () => {
     privateMessageOpener = null;
     groupChatActive = false;
+    if (locationShared) {
+      accountApi('/api/location', { clear: true }).catch(() => {});
+      locationShared = false;
+      locationSharePending = false;
+      memberDistances = new Map();
+    }
     clearSavedSession();
     clearPersistedSession();
     renderLoginPage();

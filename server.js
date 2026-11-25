@@ -89,6 +89,10 @@ const authRateLimitWindowMs = 5 * 60 * 1000;
 const authRateLimitMaxAttempts = 8;
 const sessions = new Map();
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
+// Where each member has agreed to share from. Coordinates never leave this
+// process; browsers only ever receive rounded mileage between two members.
+const memberLocations = new Map();
+const locationShareLifetimeMs = 4 * 60 * 60 * 1000;
 const databasePool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
@@ -199,6 +203,39 @@ function removePresence(socket) {
   }
   socket.presenceRoomId = null;
   broadcastPresenceCounts();
+}
+
+function pruneSharedLocations() {
+  const now = Date.now();
+  for (const [key, location] of memberLocations) {
+    if (now - location.updatedAt > locationShareLifetimeMs) memberLocations.delete(key);
+  }
+}
+
+// Great-circle distance between two coordinates, in miles.
+function distanceInMiles(from, to) {
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusMiles = 3958.8;
+  const latDelta = toRadians(to.latitude - from.latitude);
+  const lngDelta = toRadians(to.longitude - from.longitude);
+  const a = Math.sin(latDelta / 2) ** 2
+    + Math.cos(toRadians(from.latitude)) * Math.cos(toRadians(to.latitude)) * Math.sin(lngDelta / 2) ** 2;
+  return 2 * earthRadiusMiles * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// Every other member currently sharing, with the distance from this member.
+function sharedMemberDistances(session) {
+  pruneSharedLocations();
+  const ownLocation = memberLocations.get(session.codename.toLowerCase());
+  if (!ownLocation) return [];
+
+  return [...memberLocations.values()]
+    .filter((location) => location.codename.toLowerCase() !== session.codename.toLowerCase())
+    .map((location) => ({
+      codename: location.codename,
+      miles: Math.round(distanceInMiles(ownLocation, location) * 10) / 10
+    }))
+    .sort((a, b) => a.miles - b.miles);
 }
 
 // --- Account/Database Management ---
@@ -786,6 +823,47 @@ httpServer.on('request', async (request, response) => {
 
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ codename: account.codename, profile: account.profile || {} }));
+      return;
+    }
+
+    // Sharing is opt-in per visit: the browser asks for permission, then sends
+    // its rough coordinates here so other members can be shown a distance.
+    if (request.url === '/api/location') {
+      const session = getAuthenticatedSession(request);
+
+      if (body.clear) {
+        memberLocations.delete(session.codename.toLowerCase());
+        response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        response.end(JSON.stringify({ shared: false, members: [] }));
+        return;
+      }
+
+      const latitude = Number(body.latitude);
+      const longitude = Number(body.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+        throw new Error('That location could not be read.');
+      }
+
+      memberLocations.set(session.codename.toLowerCase(), {
+        codename: session.codename,
+        latitude,
+        longitude,
+        updatedAt: Date.now()
+      });
+
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ shared: true, members: sharedMemberDistances(session) }));
+      return;
+    }
+
+    // Refresh the distances without moving: used when a member re-enters a room.
+    if (request.url === '/api/locations') {
+      const session = getAuthenticatedSession(request);
+      pruneSharedLocations();
+      const shared = memberLocations.has(session.codename.toLowerCase());
+
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ shared, members: shared ? sharedMemberDistances(session) : [] }));
       return;
     }
 
