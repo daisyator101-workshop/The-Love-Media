@@ -76,7 +76,9 @@ if ('serviceWorker' in navigator && !isLocalDevelopment) {
 
 let apiBaseUrl = getApiBaseUrl();
 let webSocketBaseUrl = getWebSocketBaseUrl();
-let currentProfileName = 'Gayjesus';
+// No person is the default identity: the codename is only ever the one the server
+// confirms for this session (or the one remembered on this device).
+let currentProfileName = '';
 let currentSessionToken = '';
 let currentProfileBio = 'A little about you goes here.';
 let currentProfileStatuses = [];
@@ -224,6 +226,10 @@ function connectRoomPresence(roomName = null) {
 
 // One bubble renderer for both sides of the room chat: the sender paints their own
 // message locally, everyone else gets it relayed by the signaling server.
+// The room chat keeps only the newest messages, so a long night of chatting does
+// not grow the page without limit: the oldest bubbles drop off the top.
+const roomChatMessageLimit = 50;
+
 function appendRoomMessage(senderName, text) {
   const messages = document.querySelector('.room-chat-messages');
   if (!messages || !text) return;
@@ -235,6 +241,9 @@ function appendRoomMessage(senderName, text) {
   messageText.textContent = text;
   bubble.append(sender, messageText);
   messages.appendChild(bubble);
+  while (messages.children.length > roomChatMessageLimit) {
+    messages.firstElementChild.remove();
+  }
   messages.scrollTop = messages.scrollHeight;
 }
 
@@ -3432,7 +3441,7 @@ function renderChatroomWorkspace(profileToView = null) {
             <h3>Edit profile</h3>
             <div class="form-group">
               <label for="profile-name-input">Codename</label>
-              <input id="profile-name-input" type="text" placeholder="Gayjesus" />
+              <input id="profile-name-input" type="text" placeholder="Your codename" />
             </div>
             <div class="form-group">
               <label for="profile-bio-input">Bio</label>
@@ -3566,7 +3575,8 @@ function renderChatroomWorkspace(profileToView = null) {
   });
 
   document.getElementById('save-profile-btn').addEventListener('click', async () => {
-    const nextName = profileNameInput.value.trim() || 'Gayjesus';
+    const nextName = profileNameInput.value.trim() || currentProfileName;
+    if (!nextName) return;
     const nextBio = profileBioInput.value.trim() || 'A little about you goes here.';
     currentProfileName = nextName;
     currentProfileBio = nextBio;
@@ -3620,6 +3630,11 @@ function renderChatroomWorkspace(profileToView = null) {
   });
 }
 
+// The workspace and rooms belong to a signed-in member, never to a leftover default.
+function hasSignedInIdentity() {
+  return Boolean(currentSessionToken && currentProfileName);
+}
+
 function renderInitialRoute() {
   const hash = window.location.hash;
   if (hash === '#donation') {
@@ -3637,15 +3652,26 @@ function renderInitialRoute() {
     }, 0);
     return;
   }
+  // A saved session has already been restored by now, so a signed-in member keeps
+  // their place. Without one, these screens must not open under a leftover name.
+  const signedIn = hasSignedInIdentity();
   if (hash === '#workspace') {
+    if (!signedIn) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
   const roomRoute = hash.match(/^#room\/([^/]+)$/);
   if (roomRoute) {
     const roomName = roomNames.find((name) => roomIdForName(name) === roomRoute[1]);
-    if (roomName) {
+    if (roomName && signedIn) {
       renderAllAroundMayhemRoom(roomName);
+      return;
+    }
+    if (roomName) {
+      renderLoginPage();
       return;
     }
   }
@@ -3705,14 +3731,28 @@ const handleAuthHistoryBack = (event) => {
   }
   if (roomRoute && !document.querySelector('.room-shell')) {
     const roomName = roomNames.find((name) => roomIdForName(name) === roomRoute[1]);
-    if (roomName) renderAllAroundMayhemRoom(roomName);
-    return;
+    if (roomName && hasSignedInIdentity()) {
+      renderAllAroundMayhemRoom(roomName);
+      return;
+    }
+    if (roomName) {
+      renderLoginPage();
+      return;
+    }
   }
   if ((event.state?.screen === 'workspace' || window.location.hash === '#workspace') && workspaceHeading !== 'Chatroom workspace') {
+    if (!hasSignedInIdentity()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
   if (window.location.hash === '#workspace' && document.querySelector('.room-shell')) {
+    if (!hasSignedInIdentity()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
     return;
   }
@@ -3734,6 +3774,10 @@ window.addEventListener('popstate', handleAuthHistoryBack);
 window.addEventListener('hashchange', handleAuthHistoryBack);
 window.addEventListener('hashchange', () => {
   if (window.location.hash === '#workspace' && !document.querySelector('.workspace-sidebar')) {
+    if (!hasSignedInIdentity()) {
+      renderLoginPage();
+      return;
+    }
     renderChatroomWorkspace();
   }
 });
