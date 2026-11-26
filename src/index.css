@@ -1731,14 +1731,6 @@ button, input {
   overflow-wrap: anywhere;
 }
 
-.room-mate-distance {
-  flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: #ffe8fb;
-  white-space: nowrap;
-}
-
 .room-location-btn {
   flex-shrink: 0;
 }

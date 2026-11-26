@@ -553,6 +553,21 @@ httpServer.on('request', async (request, response) => {
     return;
   }
 
+  // Live member tally for the "N accounts" badge. Accounts live in the shared
+  // store, so one browser's saved list is never the real number.
+  if (request.method === 'GET' && request.url === '/api/members') {
+    try {
+      const memberAccounts = await readAccounts();
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ count: memberAccounts.length }));
+    } catch (error) {
+      console.error('Member count error:', error.message);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Could not load the member count.' }));
+    }
+    return;
+  }
+
   const requestUrl = new URL(request.url || '/', 'http://localhost');
 
   // Videos are shared: any visitor can watch, only the admin can add or remove.

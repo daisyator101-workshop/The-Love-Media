@@ -358,13 +358,44 @@ function addPrivateMailMessage(friend, sender, text, options = {}) {
   savePrivateMail();
 }
 
+// The server holds every member; this browser only remembers the accounts made or
+// seen here. Until the server answers, fall back to that local list.
+let memberCountFromServer = null;
+
 function accountCountLabel() {
-  const count = Math.max(1, accounts.length);
+  const count = accountCount();
   return `${count} account${count === 1 ? '' : 's'}`;
 }
 
 function accountCount() {
+  const serverCount = Number(memberCountFromServer);
+  if (Number.isFinite(serverCount) && serverCount > 0) return serverCount;
   return Math.max(1, accounts.length);
+}
+
+function applyMemberCount() {
+  const label = accountCountLabel();
+  document.querySelectorAll('.account-count').forEach((node) => {
+    node.textContent = label;
+  });
+  const heroValue = document.getElementById('member-count-value');
+  if (heroValue) heroValue.textContent = String(accountCount());
+}
+
+async function refreshMemberCount() {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return;
+  try {
+    const response = await fetch(`${baseUrl}/api/members`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    const count = Number(data?.count);
+    if (!Number.isFinite(count) || count < 0) return;
+    memberCountFromServer = count;
+    applyMemberCount();
+  } catch {
+    // Offline, or a server older than this endpoint: keep the local tally.
+  }
 }
 
 function getRememberedCredentials() {
@@ -687,7 +718,7 @@ function renderLoginPage() {
         <p>Private rooms, intimate hangouts, and welcoming LGBTQ+ spaces built for connection.</p>
         <div class="hero-metrics">
           <div>
-            <strong>${accountCount()}</strong>
+            <strong id="member-count-value">${accountCount()}</strong>
             <span>Member</span>
           </div>
           <div>
@@ -2811,13 +2842,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     roomMateName.className = 'room-mate-name';
     roomMateName.textContent = name;
     roomMate.append(roomMateName);
-    const mateMiles = memberDistances.get(name);
-    if (name !== currentProfileName && Number.isFinite(mateMiles)) {
-      const roomMateDistance = document.createElement('span');
-      roomMateDistance.className = 'room-mate-distance';
-      roomMateDistance.textContent = formatMiles(mateMiles);
-      roomMate.appendChild(roomMateDistance);
-    }
 
     const roomMateMenu = document.createElement('div');
     roomMateMenu.className = 'profile-menu hidden';
@@ -2827,13 +2851,18 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     roomMateMenuName.textContent = name;
     roomMateMenu.appendChild(roomMateMenuName);
 
-    const menuMiles = memberDistances.get(name);
-    if (name !== currentProfileName && Number.isFinite(menuMiles)) {
-      const roomMateMenuDistance = document.createElement('p');
-      roomMateMenuDistance.className = 'profile-menu-distance';
-      roomMateMenuDistance.textContent = `${formatMiles(menuMiles)} away`;
-      roomMateMenu.appendChild(roomMateMenuDistance);
-    }
+    // Miles belong in the menu that opens on a codename, not next to the name, and
+    // are recomputed each time so they are never stale.
+    const roomMateMenuDistance = document.createElement('p');
+    roomMateMenuDistance.className = 'profile-menu-distance';
+    roomMateMenu.appendChild(roomMateMenuDistance);
+    const updateMenuDistance = () => {
+      const menuMiles = memberDistances.get(name);
+      const showMiles = name !== currentProfileName && Number.isFinite(menuMiles);
+      roomMateMenuDistance.textContent = showMiles ? `${formatMiles(menuMiles)} away` : '';
+      roomMateMenuDistance.classList.toggle('hidden', !showMiles);
+    };
+    updateMenuDistance();
 
     ['Exit', 'Private message', 'Add friend', 'Profile'].forEach((actionName) => {
       const action = document.createElement('button');
@@ -3244,6 +3273,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       const isHidden = roomMateMenu.classList.contains('hidden');
       document.querySelectorAll('#room-mates-list .profile-menu').forEach(m => m.classList.add('hidden'));
       if (isHidden) {
+        updateMenuDistance();
         const rect = roomMate.getBoundingClientRect();
         roomMateMenu.style.position = 'fixed';
         // Center it vertically on the screen to prevent it from going off the bottom
@@ -3696,6 +3726,7 @@ migrateLocalAccounts();
 const restoredSavedSession = restoreSavedSession();
 renderInitialRoute();
 if (restoredSavedSession) validateSavedSession();
+refreshMemberCount();
 
 const handleAuthHistoryBack = (event) => {
   const authHeading = document.querySelector('.login-card h1')?.textContent;
