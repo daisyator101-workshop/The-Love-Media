@@ -1740,7 +1740,6 @@ button, input {
 }
 
 .room-location-btn {
-  width: 100%;
   flex-shrink: 0;
 }
 

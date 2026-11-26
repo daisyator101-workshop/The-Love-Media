@@ -2687,6 +2687,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
           </div>
           <div class="room-header-actions">
             <button class="small-btn" id="room-gayjesus-blog-btn">Gayjesus Blog</button>
+            <button class="small-btn room-location-btn" id="room-location-btn" type="button">Share my location</button>
             <button class="small-btn" id="room-friends-connect-btn">Friends Connect</button>
             <button class="small-btn donate-btn" id="room-donate-btn">Donate a $1</button>
             <button class="small-btn" id="room-background-btn" type="button">Change picture</button>
@@ -2721,7 +2722,6 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
           </div>
           <aside class="room-side-panel">
             <p class="room-side-label">Room mates</p>
-            <button class="small-btn room-location-btn" id="room-location-btn" type="button">Share my location</button>
             <p class="room-location-status" id="room-location-status" aria-live="polite">Accept the browser prompt to show room mates how far away you are.</p>
             <div id="room-mates-list"></div>
           </aside>
