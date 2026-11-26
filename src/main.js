@@ -719,7 +719,7 @@ function renderLoginPage() {
             ${appDownloadUrl
               ? `<a class="app-download-btn" id="app-download-btn" href="${appDownloadUrl}" rel="noopener">Download the Windows app</a>`
               : `<span class="app-download-btn is-unavailable" id="app-download-btn">App download coming soon</span>`}
-            <button class="app-download-btn app-install-btn" id="app-install-btn" type="button" hidden>Install the app</button>
+            <button class="app-download-btn app-install-btn" id="app-install-btn" type="button" hidden>Install mobile app</button>
             <p class="app-download-note">Windows 10 or 11 installer (.msi). On a phone, use your browser's Add to Home screen.</p>
           </div>
           <p class="secondary-text" style="margin-top: 10px; font-size: 0.75rem; opacity: 0.6;">
