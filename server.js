@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { createServer } from 'node:http';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import Stripe from 'stripe';
 import pg from 'pg';
@@ -568,6 +568,22 @@ httpServer.on('request', async (request, response) => {
     return;
   }
 
+  // The member's own inbox, so messages sent while they were away are waiting
+  // for them the next time they open the app.
+  if (request.method === 'GET' && request.url === '/api/inbox') {
+    try {
+      const session = getAuthenticatedSession(request);
+      const inboxAccounts = await readAccounts();
+      const inboxAccount = inboxAccounts.find((account) => account.codename.toLowerCase() === session.codename.toLowerCase());
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ messages: Array.isArray(inboxAccount?.inbox) ? inboxAccount.inbox : [] }));
+    } catch (error) {
+      response.writeHead(error.statusCode || 500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: error.message || 'Could not load the inbox.' }));
+    }
+    return;
+  }
+
   const requestUrl = new URL(request.url || '/', 'http://localhost');
 
   // Videos are shared: any visitor can watch, only the admin can add or remove.
@@ -879,6 +895,38 @@ httpServer.on('request', async (request, response) => {
 
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       response.end(JSON.stringify({ shared, members: shared ? sharedMemberDistances(session) : [] }));
+      return;
+    }
+
+    // Direct messages are kept on the recipient's account, so they survive the
+    // sender closing the app and light up the recipient's inbox.
+    if (request.url === '/api/messages') {
+      const session = getAuthenticatedSession(request);
+      const recipientName = String(body.to || '').trim().toLowerCase();
+      const text = String(body.text || '').trim().slice(0, 2000);
+      if (!text) throw new Error('Write a message first.');
+      const recipient = accounts.find((account) => account.codename.toLowerCase() === recipientName);
+      if (!recipient) throw new Error('That member does not exist.');
+      if (recipient.codename.toLowerCase() === session.codename.toLowerCase()) throw new Error('You cannot message yourself.');
+      recipient.inbox = Array.isArray(recipient.inbox) ? recipient.inbox : [];
+      recipient.inbox.push({ id: randomUUID(), from: session.codename, text, createdAt: Date.now(), read: false });
+      // Trimmed so one account's inbox cannot grow without limit.
+      if (recipient.inbox.length > 200) recipient.inbox = recipient.inbox.slice(-200);
+      await saveAccounts(accounts);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ sent: true }));
+      return;
+    }
+
+    if (request.url === '/api/inbox/read') {
+      const session = getAuthenticatedSession(request);
+      const reader = accounts.find((account) => account.codename.toLowerCase() === session.codename.toLowerCase());
+      if (reader && Array.isArray(reader.inbox)) {
+        reader.inbox = reader.inbox.map((message) => ({ ...message, read: true }));
+        await saveAccounts(accounts);
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ read: true }));
       return;
     }
 

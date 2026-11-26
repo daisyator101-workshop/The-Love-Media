@@ -1185,6 +1185,21 @@ button, input {
   color: #e8ebff;
 }
 
+.friends-connect-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.friends-connect-person .friends-connect-distance {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ffe8fb;
+  white-space: nowrap;
+}
+
 .friends-connect-actions {
   display: flex;
   align-items: center;
@@ -1195,6 +1210,30 @@ button, input {
 .friends-connect-actions button:disabled {
   opacity: 0.65;
   cursor: default;
+}
+
+.inbox-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ff3d8b;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.inbox-badge.hidden {
+  display: none;
+}
+
+.inbox-has-unread {
+  box-shadow: 0 0 0 2px rgba(255, 61, 139, 0.75), 0 0 14px rgba(255, 61, 139, 0.6);
 }
 
 .group-chat-invites {

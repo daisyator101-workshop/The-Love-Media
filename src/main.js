@@ -479,6 +479,165 @@ async function accountApi(path, payload) {
   throw lastError || new Error('Account service unavailable.');
 }
 
+async function accountApiGet(path) {
+  const targetBaseUrl = getApiBaseUrl();
+  if (!targetBaseUrl) throw new Error('Server URL is required.');
+  const headers = {};
+  if (currentSessionToken) headers.Authorization = `Bearer ${currentSessionToken}`;
+  const response = await fetch(`${targetBaseUrl}${path}`, { headers, cache: 'no-store' });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Account service unavailable.');
+  return result;
+}
+
+// --- Inbox ---
+// Messages wait on the server, so one sent while a member is away lights up their
+// Inbox the moment they are back.
+let inboxMessages = [];
+const inboxPollMs = 20 * 1000;
+
+function inboxUnreadCount() {
+  return inboxMessages.filter((message) => !message.read).length;
+}
+
+function updateInboxBadges() {
+  const unread = inboxUnreadCount();
+  document.querySelectorAll('[data-inbox-badge]').forEach((badge) => {
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+    badge.classList.toggle('hidden', unread === 0);
+  });
+  document.querySelectorAll('[data-inbox-button]').forEach((button) => {
+    button.classList.toggle('inbox-has-unread', unread > 0);
+  });
+}
+
+function renderInboxList() {
+  const list = document.getElementById('pm-inbox-list');
+  if (!list) return;
+  list.replaceChildren();
+  if (!inboxMessages.length) {
+    const emptyMessage = document.createElement('p');
+    emptyMessage.className = 'profile-preview-label';
+    emptyMessage.textContent = 'No messages from other members yet.';
+    list.appendChild(emptyMessage);
+    return;
+  }
+  [...inboxMessages].reverse().forEach((message) => {
+    const row = document.createElement('div');
+    row.className = 'pm-mail-row';
+    const card = document.createElement('div');
+    card.className = 'pm-mail-conversation';
+    const from = document.createElement('strong');
+    from.textContent = `From ${message.from}`;
+    const text = document.createElement('span');
+    text.textContent = message.text;
+    const when = document.createElement('small');
+    when.textContent = new Date(message.createdAt).toLocaleString();
+    card.append(from, text, when);
+    row.appendChild(card);
+    list.appendChild(row);
+  });
+}
+
+async function refreshInbox() {
+  if (!currentSessionToken) return;
+  try {
+    const result = await accountApiGet('/api/inbox');
+    if (!Array.isArray(result.messages)) return;
+    inboxMessages = result.messages;
+    updateInboxBadges();
+    renderInboxList();
+  } catch {
+    // The badge is a convenience; a failed check must not disturb the page.
+  }
+}
+
+async function markInboxRead() {
+  if (!inboxUnreadCount() || !currentSessionToken) return;
+  inboxMessages = inboxMessages.map((message) => ({ ...message, read: true }));
+  updateInboxBadges();
+  try {
+    await accountApi('/api/inbox/read', {});
+  } catch {
+    // The next refresh restores the true state.
+  }
+}
+
+// --- Video highlights ---
+// The Welcome & updates and Gayjesus blog buttons light up when a video was added
+// since this browser last opened that page.
+const videoHighlightKinds = {
+  welcome: { seenKey: 'the-love-media-welcome-video-seen', unseen: 0 },
+  blog: { seenKey: 'the-love-media-blog-video-seen', unseen: 0 }
+};
+
+function newestVideoCreatedAt(videos) {
+  return videos.reduce((newest, video) => {
+    const createdAt = String(video.createdAt || '');
+    return createdAt > newest ? createdAt : newest;
+  }, '');
+}
+
+function updateVideoHighlight(kind) {
+  const { unseen } = videoHighlightKinds[kind];
+  document.querySelectorAll(`[data-video-badge="${kind}"]`).forEach((badge) => {
+    badge.textContent = unseen > 99 ? '99+' : String(unseen);
+    badge.classList.toggle('hidden', unseen === 0);
+  });
+  document.querySelectorAll(`[data-video-button="${kind}"]`).forEach((button) => {
+    button.classList.toggle('inbox-has-unread', unseen > 0);
+  });
+}
+
+function updateVideoHighlights() {
+  Object.keys(videoHighlightKinds).forEach(updateVideoHighlight);
+}
+
+async function fetchVideosOfKind(kind) {
+  if (!apiBaseUrl) return null;
+  const response = await fetch(`${apiBaseUrl}/api/videos?kind=${encodeURIComponent(kind)}`, { cache: 'no-store' });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return Array.isArray(payload.videos) ? payload.videos : [];
+}
+
+async function refreshVideoHighlight(kind) {
+  try {
+    const videos = await fetchVideosOfKind(kind);
+    if (!videos) return;
+    const { seenKey } = videoHighlightKinds[kind];
+    const seen = localStorage.getItem(seenKey) || '';
+    if (!seen) {
+      // First look on this browser: nothing counts as new yet.
+      const newest = newestVideoCreatedAt(videos);
+      if (newest) localStorage.setItem(seenKey, newest);
+      videoHighlightKinds[kind].unseen = 0;
+    } else {
+      videoHighlightKinds[kind].unseen = videos
+        .filter((video) => String(video.createdAt || '') > seen).length;
+    }
+    updateVideoHighlight(kind);
+  } catch {
+    // Highlighting is a convenience; a failed check must not disturb the page.
+  }
+}
+
+function refreshVideoHighlights() {
+  Object.keys(videoHighlightKinds).forEach(refreshVideoHighlight);
+}
+
+async function markVideosSeen(kind) {
+  videoHighlightKinds[kind].unseen = 0;
+  updateVideoHighlight(kind);
+  try {
+    const videos = await fetchVideosOfKind(kind);
+    const newest = newestVideoCreatedAt(videos || []);
+    if (newest) localStorage.setItem(videoHighlightKinds[kind].seenKey, newest);
+  } catch {
+    // The next check catches up on its own.
+  }
+}
+
 // --- Location sharing ---
 // The browser asks permission before anything is sent, and the server answers
 // with rounded mileage only, so no member ever receives another's coordinates.
@@ -833,6 +992,7 @@ function renderLoginPage() {
       }
       await rememberBrowserCredential(codename, password, rememberPasswordInput.checked);
       openWelcomePage();
+      refreshInbox();
     } catch (error) {
       const account = accounts.find((savedAccount) => savedAccount.codename.toLowerCase() === codename.toLowerCase());
       if (account?.password === password) {
@@ -1073,6 +1233,7 @@ function renderCreateAccountPage() {
       if (currentSessionToken) {
         status.textContent = 'Account created. Taking you in...';
         openWelcomePage();
+        refreshInbox();
         return;
       }
       // Older server without the sign-up session: fall back to the login form.
@@ -1783,6 +1944,8 @@ function openWelcomeVideosModal() {
 
 
 document.body.appendChild(modal);
+// Opening the videos page clears the highlight: everything here has been seen.
+markVideosSeen('welcome');
 
 const welcomeVideosList = document.getElementById('welcome-videos-list');
 loadVideosInto(welcomeVideosList, 'welcome', isGayjesus);
@@ -1884,6 +2047,8 @@ function openGayjesusBlogModal() {
 
 
 document.body.appendChild(modal);
+// Opening the blog clears its highlight: everything here has been seen.
+markVideosSeen('blog');
 
 const blogVideosList = document.getElementById('gayjesus-blog-list');
 loadVideosInto(blogVideosList, 'blog', isGayjesus);
@@ -1953,8 +2118,8 @@ function renderNextPage() {
         <h1>You're in.</h1>
         <p>Welcome to your next space for connection, conversation, and community.</p>
         <button class="primary-btn" id="chatroom-btn">Go to chatroom workspace</button>
-        <button class="secondary-btn" id="welcome-videos-btn">Welcome & updates videos</button>
-        <button class="secondary-btn" id="gayjesus-blog-btn">Gayjesus blog</button>
+        <button class="secondary-btn" id="welcome-videos-btn" data-video-button="welcome" type="button">Welcome & updates videos<span class="inbox-badge hidden" data-video-badge="welcome"></span></button>
+        <button class="secondary-btn" id="gayjesus-blog-btn" data-video-button="blog" type="button">Gayjesus blog<span class="inbox-badge hidden" data-video-badge="blog"></span></button>
         <button class="secondary-btn" id="back-btn">Back to login</button>
         <button class="danger-btn" id="delete-account-btn">Delete account</button>
         <p class="form-status" id="account-delete-status" aria-live="polite"></p>
@@ -1964,6 +2129,8 @@ function renderNextPage() {
 
   document.getElementById('chatroom-btn').addEventListener('click', openChatroomWorkspacePage);
   document.getElementById('welcome-videos-btn').addEventListener('click', openWelcomeVideosPage);
+  updateVideoHighlights();
+  refreshVideoHighlights();
   document.getElementById('gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('back-btn').addEventListener('click', () => {
     currentSessionToken = '';
@@ -2159,6 +2326,9 @@ function openPrivateMail() {
         <button class="secondary-btn" id="close-pm-mail-btn" type="button">Exit</button>
       </div>
       <div class="friends-connect-content">
+        <p class="profile-preview-label">Inbox - messages from other members</p>
+        <div class="friends-connect-list" id="pm-inbox-list"></div>
+        <p class="profile-preview-label">Saved messages from friends who were offline</p>
         <div class="friends-connect-list" id="pm-mail-list"></div>
       </div>
       <div class="profile-editor-modal hidden" id="private-mail-message-modal">
@@ -2175,6 +2345,9 @@ function openPrivateMail() {
     </div>
   `;
   document.getElementById('root').appendChild(mailModal);
+  // Opening the inbox clears the badge: everything here has been seen.
+  renderInboxList();
+  refreshInbox().then(markInboxRead);
   const messageModal = mailModal.querySelector('#private-mail-message-modal');
   messageModal.querySelector('#close-private-mail-message-btn').addEventListener('click', (event) => {
     event.stopPropagation();
@@ -2257,7 +2430,7 @@ function openFriendsConnect() {
         </div>
         <div class="friends-connect-header-actions">
           <button class="secondary-btn" id="close-friends-connect-btn">Exit</button>
-          <button class="secondary-btn" id="open-pm-mail-btn" type="button">PM Mail</button>
+          <button class="secondary-btn" id="open-pm-mail-btn" data-inbox-button type="button">Inbox<span class="inbox-badge hidden" data-inbox-badge></span></button>
           <button class="secondary-btn" id="enter-group-chat-btn" type="button"></button>
         </div>
       </div>
@@ -2268,6 +2441,7 @@ function openFriendsConnect() {
   `;
 
   document.getElementById('root').appendChild(overlay);
+  updateInboxBadges();
   document.getElementById('open-pm-mail-btn').addEventListener('click', () => {
     overlay.remove();
     openPrivateMail();
@@ -2286,6 +2460,24 @@ function openFriendsConnect() {
   });
   const friendsList = document.getElementById('friends-connect-list');
   const onlinePeople = new Set([currentProfileName]);
+
+  // Miles sit beside each friend's name. The server only sends a distance for a
+  // friend who shares a location, so a hidden one simply leaves the slot empty.
+  const friendDistanceLabels = new Map();
+  let friendDistanceTimer = null;
+  const updateFriendDistances = () => {
+    if (!friendsList.isConnected) {
+      if (friendDistanceTimer) window.clearInterval(friendDistanceTimer);
+      friendDistanceTimer = null;
+      return;
+    }
+    friendDistanceLabels.forEach((label, friend) => {
+      const miles = memberDistances.get(friend);
+      const showMiles = Number.isFinite(miles);
+      label.textContent = showMiles ? `${formatMiles(miles)} away` : '';
+      label.classList.toggle('hidden', !showMiles);
+    });
+  };
   if (friends.length === 0) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'profile-preview-label';
@@ -2298,6 +2490,12 @@ function openFriendsConnect() {
       friendRow.tabIndex = 0;
       const friendName = document.createElement('strong');
       friendName.textContent = friend;
+      const friendDistance = document.createElement('span');
+      friendDistance.className = 'friends-connect-distance';
+      friendDistanceLabels.set(friend, friendDistance);
+      const friendIdentity = document.createElement('div');
+      friendIdentity.className = 'friends-connect-identity';
+      friendIdentity.append(friendName, friendDistance);
       const friendActions = document.createElement('div');
       friendActions.className = 'friends-connect-actions';
       const friendStatus = document.createElement('span');
@@ -2349,7 +2547,7 @@ function openFriendsConnect() {
         }
       });
       friendActions.append(friendStatus, messageButton, inviteButton, deleteButton);
-      friendRow.append(friendName, friendActions);
+      friendRow.append(friendIdentity, friendActions);
       const openMessage = () => {
         overlay.remove();
         if (privateMessageOpener) {
@@ -2368,6 +2566,20 @@ function openFriendsConnect() {
       });
       friendsList.appendChild(friendRow);
     });
+  }
+  updateFriendDistances();
+  if (friends.length) {
+    refreshMemberDistances().then(updateFriendDistances);
+    // The room's refresh only ticks while sharing, so this page keeps its own and
+    // clears it as soon as its list is gone.
+    friendDistanceTimer = window.setInterval(() => {
+      if (!friendsList.isConnected) {
+        window.clearInterval(friendDistanceTimer);
+        friendDistanceTimer = null;
+        return;
+      }
+      if (locationShared) refreshMemberDistances().then(updateFriendDistances);
+    }, locationRefreshMs);
   }
   document.getElementById('close-friends-connect-btn').addEventListener('click', () => window.history.back());
 }
@@ -2746,8 +2958,9 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
             <p class="room-member-name" id="room-member-name"></p>
           </div>
           <div class="room-header-actions">
-            <button class="small-btn" id="room-gayjesus-blog-btn">Gayjesus Blog</button>
+            <button class="small-btn" id="room-gayjesus-blog-btn" data-video-button="blog" type="button">Gayjesus Blog<span class="inbox-badge hidden" data-video-badge="blog"></span></button>
             <button class="small-btn room-location-btn" id="room-location-btn" type="button">Share my location</button>
+            <button class="small-btn" id="room-inbox-btn" data-inbox-button type="button">Inbox<span class="inbox-badge hidden" data-inbox-badge></span></button>
             <button class="small-btn" id="room-friends-connect-btn">Friends Connect</button>
             <button class="small-btn donate-btn" id="room-donate-btn">Donate a $1</button>
             <button class="small-btn" id="room-background-btn" type="button">Change picture</button>
@@ -2793,6 +3006,7 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
   document.getElementById('room-member-name').textContent = currentProfileName;
   document.getElementById('room-gayjesus-blog-btn').addEventListener('click', openGayjesusBlogPage);
   document.getElementById('room-friends-connect-btn').addEventListener('click', openFriendsConnectPage);
+  document.getElementById('room-inbox-btn').addEventListener('click', () => openPrivateMail());
   document.getElementById('room-donate-btn').addEventListener('click', openDonationPopup);
   const roomShell = document.getElementById('active-room-shell');
   const roomBackgroundInput = document.getElementById('room-background-input');
@@ -3219,11 +3433,25 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
       const message = input.value.trim();
       if (!message) return;
       appendThreadMessage(currentProfileName, message, true);
-      if (!options.groupChat && !isFriendOnline) addPrivateMailMessage(name, currentProfileName, message);
       input.value = '';
-      status.textContent = !options.groupChat && !isFriendOnline
-        ? `${name} is offline. Your message was sent to PM Mail.`
-        : '';
+      if (!options.groupChat) {
+        // Sent through the server, so it waits in their inbox even with the app
+        // closed and lights up their Inbox badge.
+        if (!isFriendOnline) status.textContent = `${name} is offline. Your message is saved in their inbox.`;
+        accountApi('/api/messages', { to: name, text: message })
+          .then(() => {
+            if (!isFriendOnline) addPrivateMailMessage(name, currentProfileName, message);
+          })
+          .catch((error) => {
+            if (!isFriendOnline) {
+              // Not a member yet: keep the note in this browser's PM Mail.
+              addPrivateMailMessage(name, currentProfileName, message);
+              status.textContent = `${name} has no account yet, so the message was saved in PM Mail.`;
+              return;
+            }
+            status.textContent = error.message || 'Could not send that message.';
+          });
+      }
 
       window.setTimeout(() => {
         if (!document.body.contains(messageModal) || !isFriendOnline) return;
@@ -3300,6 +3528,9 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     }
   });
   updateLocationButton();
+  updateInboxBadges();
+  updateVideoHighlight('blog');
+  refreshVideoHighlight('blog');
   startLocationRefresh();
   refreshMemberDistances().then(requestLocationOnRoomEntry);
 
@@ -3727,6 +3958,12 @@ const restoredSavedSession = restoreSavedSession();
 renderInitialRoute();
 if (restoredSavedSession) validateSavedSession();
 refreshMemberCount();
+refreshInbox();
+window.setInterval(() => {
+  if (currentSessionToken) refreshInbox();
+  refreshVideoHighlights();
+}, inboxPollMs);
+refreshVideoHighlights();
 
 const handleAuthHistoryBack = (event) => {
   const authHeading = document.querySelector('.login-card h1')?.textContent;
