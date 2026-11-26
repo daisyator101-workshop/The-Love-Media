@@ -977,6 +977,24 @@ server.on('connection', (socket) => {
       return;
     }
 
+    // Room chat: relay the text to everyone else standing in the same room. The
+    // browser renders it with textContent, so no HTML is ever interpreted.
+    if (message.type === 'room-message') {
+      const text = String(message.text || '').trim().slice(0, 2000);
+      if (!text || !socket.presenceRoomId) return;
+      const relay = JSON.stringify({
+        type: 'room-message',
+        room: socket.presenceRoomId,
+        sender: authenticatedSession.codename,
+        text,
+        sentAt: Date.now()
+      });
+      for (const member of presenceRooms.get(socket.presenceRoomId) || []) {
+        if (member !== socket && member.readyState === 1) member.send(relay);
+      }
+      return;
+    }
+
     if (message.type === 'join') {
       roomId = message.room || 'main-group';
       peerId = message.peerId;

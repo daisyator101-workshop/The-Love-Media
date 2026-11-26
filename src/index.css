@@ -2115,6 +2115,11 @@ button, input {
   font-size: 0.75rem;
 }
 
+.message-item span {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .reset-inline-row {
   display: flex;
   gap: 8px;

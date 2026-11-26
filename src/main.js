@@ -208,6 +208,10 @@ function connectRoomPresence(roomName = null) {
   };
   roomPresenceSocket.onmessage = ({ data }) => {
     const message = JSON.parse(data);
+    if (message.type === 'room-message') {
+      appendRoomMessage(message.sender || 'Someone', message.text || '');
+      return;
+    }
     if (message.type !== 'room-counts') return;
     roomCounts = message.counts || {};
     roomMembers = message.members || {};
@@ -216,6 +220,22 @@ function connectRoomPresence(roomName = null) {
     roomMatesRenderer?.();
     if (locationShared) refreshMemberDistances();
   };
+}
+
+// One bubble renderer for both sides of the room chat: the sender paints their own
+// message locally, everyone else gets it relayed by the signaling server.
+function appendRoomMessage(senderName, text) {
+  const messages = document.querySelector('.room-chat-messages');
+  if (!messages || !text) return;
+  const bubble = document.createElement('div');
+  bubble.className = 'message-item';
+  const sender = document.createElement('strong');
+  sender.textContent = senderName;
+  const messageText = document.createElement('span');
+  messageText.textContent = text;
+  bubble.append(sender, messageText);
+  messages.appendChild(bubble);
+  messages.scrollTop = messages.scrollHeight;
 }
 
 function getPrivateThreadKey(friend) {
@@ -3271,15 +3291,10 @@ function renderAllAroundMayhemRoom(roomName = 'ALL AROUND MAYHEM') {
     const message = input.value.trim();
     if (!message) return;
 
-    const messages = document.querySelector('.room-chat-messages');
-    const bubble = document.createElement('div');
-    bubble.className = 'message-item';
-    const sender = document.createElement('strong');
-    sender.textContent = currentProfileName;
-    const messageText = document.createElement('span');
-    messageText.textContent = message;
-    bubble.append(sender, messageText);
-    messages.appendChild(bubble);
+    appendRoomMessage(currentProfileName, message);
+    if (roomPresenceSocket?.readyState === WebSocket.OPEN) {
+      roomPresenceSocket.send(JSON.stringify({ type: 'room-message', text: message }));
+    }
     input.value = '';
   };
 
